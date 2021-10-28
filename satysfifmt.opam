@@ -1,0 +1,29 @@
+opam-version: "2.0"
+version: "0.0.1"
+maintainer: "puripuri2100"
+authors: ["puripuri2100" "gfngfn"]
+synopsis: "Format SATySFi code"
+description: """
+Tool to format SATySFi code.
+"""
+license: "LGPL-3.0-or-later"
+tags: []
+homepage: "https://github.com/puripuri2100/satysfifmt"
+bug-reports: "https://github.com/puripuri2100/satysfifmt/issues"
+depends: [
+  "ocaml" {>= "4.10.0"}
+  "ocamlfind"
+  "dune"
+  "menhir"
+  "toml" {>= "7.0.0" & < "8.0.0"}
+  "sedlex" {>= "2.2" & < "3.0"}
+  "ppx_deriving"
+  "uutf"
+]
+build: [
+  [make "-f" "Makefile" "build" "PREFIX=%{prefix}%"]
+]
+install: [
+  [make "-f" "Makefile" "install" "PREFIX=%{prefix}%"]
+]
+dev-repo: "git+https://github.com/puripuri2100/satysfifmt.git"

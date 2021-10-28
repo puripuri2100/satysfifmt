@@ -1,0 +1,21 @@
+(executable
+  (name main)
+  (public_name satysfifmt)
+  (flags (-w -3 -bin-annot -thread -safe-string))
+  (libraries  ;;toml
+              menhirLib
+              sedlex
+              uutf
+              str
+  )
+ (preprocess
+            (pps
+              ppx_deriving.show
+              sedlex.ppx
+            ))
+)
+
+
+;;(menhir
+;; (modules parser)
+;; (flags (--table --explain)))
