@@ -2,6 +2,7 @@ open Arg
 open Filename
 
 open OptionState
+open Parser_
 open Parser
 open Lexer
 open Error
@@ -17,7 +18,7 @@ let parse lexbuf =
     (token, ante_position, post_position)
   in
   let parser =
-    MenhirLib.Convert.Simplified.traditional2revised Parser.main
+    MenhirLib.Convert.Simplified.traditional2revised main
   in
   parser lexer
 *)
@@ -27,8 +28,8 @@ let test_parse lexbuf =
   let rec sub () =
     let token = Lexer.lex lexbuf in
     match token with
-    | Parser.EOI(_) -> print_endline "EOI\n"
-    | _ -> Printf.printf "%s\n" (Parser.show_token token); sub ()
+    | EOI(_) -> print_endline "EOI\n"
+    | _ -> Printf.printf "%s\n" (show_token token); sub ()
   in
   sub ()
 

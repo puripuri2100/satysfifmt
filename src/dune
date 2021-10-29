@@ -8,14 +8,19 @@
               uutf
               str
   )
- (preprocess
+  (preprocess
             (pps
               ppx_deriving.show
               sedlex.ppx
             ))
 )
 
+(copy_files# backend/*.{ml,mli})
+(copy_files# frontend/*.{ml,mli})
+(copy_files  frontend/*.{mly})
 
-;;(menhir
-;; (modules parser)
-;; (flags (--table --explain)))
+
+(menhir
+  (modules parser)
+  (flags (--table --explain)))
+

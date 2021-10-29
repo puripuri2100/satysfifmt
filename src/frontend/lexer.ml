@@ -1,5 +1,5 @@
 open Sedlexing
-open Parser
+open Parser_
 open Range
 open Lexing
 open Error
@@ -173,7 +173,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
             input_column    = col;
           }
         in
-        Parser.POSITIONED_LITERAL(pos, token_data, ipos, s)
+        POSITIONED_LITERAL(pos, token_data, ipos, s)
   )
   | '@' -> (
     let (headertype, content) = lex_header lexbuf in
@@ -182,15 +182,15 @@ let rec progexpr line_break_counter comment_stack lexbuf =
       Types.make_token_data line_break_counter (List.rev comment_stack) None
     in
     match headertype with
-    | "require" -> Parser.HEADER_REQUIRE(pos, token_data, content)
-    | "import"  -> Parser.HEADER_IMPORT(pos, token_data, content)
+    | "require" -> HEADER_REQUIRE(pos, token_data, content)
+    | "import"  -> HEADER_IMPORT(pos, token_data, content)
 
     | "stage" ->
         begin
           match content with
-          | "persistent" -> Parser.HEADER_PERSISTENT0(pos, token_data)
-          | "0"          -> Parser.HEADER_STAGE0(pos, token_data)
-          | "1"          -> Parser.HEADER_STAGE1(pos, token_data)
+          | "persistent" -> HEADER_PERSISTENT0(pos, token_data)
+          | "0"          -> HEADER_STAGE0(pos, token_data)
+          | "1"          -> HEADER_STAGE1(pos, token_data)
           | _            -> raise (LexError(pos, "undefined stage type '" ^ content ^ "'; should be 'persistent', '0', or '1'."))
         end
 
@@ -205,7 +205,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
     mode_push ProgramState;
-    Parser.BRECORD(pos, token_data)
+    BRECORD(pos, token_data)
   )
   | "|)" -> (
     let pos = get_pos lexbuf in
@@ -213,7 +213,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.ERECORD(pos, token_data)
+    ERECORD(pos, token_data)
   )
   | '(' -> (
     let pos = get_pos lexbuf in
@@ -221,7 +221,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
     mode_push ProgramState;
-    Parser.LPAREN(pos, token_data)
+    LPAREN(pos, token_data)
   )
   | ')' -> (
     let pos = get_pos lexbuf in
@@ -229,7 +229,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.RPAREN(pos, token_data)
+    RPAREN(pos, token_data)
   )
   | '[' -> (
     let pos = get_pos lexbuf in
@@ -237,7 +237,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
     mode_push ProgramState;
-    Parser.BLIST(pos, token_data)
+    BLIST(pos, token_data)
   )
   | ']' -> (
     let pos = get_pos lexbuf in
@@ -245,14 +245,14 @@ let rec progexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.ELIST(pos, token_data)
+    ELIST(pos, token_data)
   )
   | ';' -> (
     let pos = get_pos lexbuf in
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.LISTPUNCT(pos, token_data)
+    LISTPUNCT(pos, token_data)
   )
   | '{' -> (
     let pos = get_pos lexbuf in
@@ -260,7 +260,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
     mode_push HorizontalState;
-    Parser.BHORZGRP(pos, token_data)
+    BHORZGRP(pos, token_data)
   )
   | "\'<" -> (
     let pos = get_pos lexbuf in
@@ -268,7 +268,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
     mode_push VerticalState;
-    Parser.BVERTGRP(pos, token_data)
+    BVERTGRP(pos, token_data)
   )
   | "${" -> (
     let pos = get_pos lexbuf in
@@ -276,35 +276,35 @@ let rec progexpr line_break_counter comment_stack lexbuf =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
     mode_push MathState;
-    Parser.BMATHGRP(pos, token_data)
+    BMATHGRP(pos, token_data)
   )
   | "<[" -> (
     let pos = get_pos lexbuf in
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.BPATH(pos, token_data)
+    BPATH(pos, token_data)
   )
   | "]>" -> (
     let pos = get_pos lexbuf in
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.EPATH(pos, token_data)
+    EPATH(pos, token_data)
   )
   | ".." -> (
     let pos = get_pos lexbuf in
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.PATHCURVE(pos, token_data)
+    PATHCURVE(pos, token_data)
   )
   | "--" -> (
     let pos = get_pos lexbuf in
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.PATHLINE(pos, token_data)
+    PATHLINE(pos, token_data)
   )
   | Plus '`' -> (
     let pos_start = get_pos lexbuf in
@@ -315,7 +315,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.LITERAL(pos, token_data, s, true, omit_post)
+    LITERAL(pos, token_data, s, true, omit_post)
   )
   | '#', Plus '`' -> (
     let pos_start = get_pos lexbuf in
@@ -326,7 +326,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.LITERAL(pos, token_data, s, false, omit_post)
+    LITERAL(pos, token_data, s, false, omit_post)
   )
   | '\\', (identifier | constructor), '@' -> (
     let tokstr = lexeme lexbuf in
@@ -334,7 +334,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.HORZMACRO(pos, token_data, tokstr)
+    HORZMACRO(pos, token_data, tokstr)
   )
   | '\\', (identifier | constructor) -> (
     let tokstr = lexeme lexbuf in
@@ -342,7 +342,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.HORZCMD(pos, token_data, tokstr)
+    HORZCMD(pos, token_data, tokstr)
   )
   | '+', (identifier | constructor), '@' -> (
     let tokstr = lexeme lexbuf in
@@ -350,7 +350,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.VERTMACRO(pos, token_data, tokstr)
+    VERTMACRO(pos, token_data, tokstr)
   )
   | '+', (identifier | constructor) -> (
     let tokstr = lexeme lexbuf in
@@ -358,63 +358,63 @@ let rec progexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.VERTCMD(pos, token_data, tokstr)
+    VERTCMD(pos, token_data, tokstr)
   )
   | '#' -> (
     let pos = get_pos lexbuf in
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.ACCESS(pos, token_data)
+    ACCESS(pos, token_data)
   )
   | "->" -> (
     let pos = get_pos lexbuf in
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.ARROW(pos, token_data)
+    ARROW(pos, token_data)
   )
   | "<-" -> (
     let pos = get_pos lexbuf in
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.OVERWRITEEQ(pos, token_data)
+    OVERWRITEEQ(pos, token_data)
   )
   | '|' -> (
     let pos = get_pos lexbuf in
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.BAR(pos, token_data)
+    BAR(pos, token_data)
   )
   | '_' -> (
     let pos = get_pos lexbuf in
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.WILDCARD(pos, token_data)
+    WILDCARD(pos, token_data)
   )
   | "::" -> (
     let pos = get_pos lexbuf in
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.CONS(pos, token_data)
+    CONS(pos, token_data)
   )
   | ':' -> (
     let pos = get_pos lexbuf in
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.COLON(pos, token_data)
+    COLON(pos, token_data)
   )
   | ',' -> (
     let pos = get_pos lexbuf in
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.COMMA(pos, token_data)
+    COMMA(pos, token_data)
   )
 
   (* -- start: binary operators -- *)
@@ -424,7 +424,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.BINOP_PLUS(pos, token_data, tok)
+    BINOP_PLUS(pos, token_data, tok)
   )
   | '-', Plus opsymbol -> (
     let tok = lexeme lexbuf in
@@ -432,7 +432,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.BINOP_MINUS(pos, token_data, tok)
+    BINOP_MINUS(pos, token_data, tok)
   )
   | '*', Plus opsymbol -> (
     let tok = lexeme lexbuf in
@@ -440,7 +440,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.BINOP_TIMES(pos, token_data, tok)
+    BINOP_TIMES(pos, token_data, tok)
   )
   | '/', Star opsymbol -> (
     let tok = lexeme lexbuf in
@@ -448,7 +448,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.BINOP_DIVIDES(pos, token_data, tok)
+    BINOP_DIVIDES(pos, token_data, tok)
   )
   | '=', Plus opsymbol -> (
     let tok = lexeme lexbuf in
@@ -456,7 +456,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.BINOP_EQ(pos, token_data, tok)
+    BINOP_EQ(pos, token_data, tok)
   )
   | '<', Star opsymbol -> (
     let tok = lexeme lexbuf in
@@ -464,7 +464,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.BINOP_LT(pos, token_data, tok)
+    BINOP_LT(pos, token_data, tok)
   )
   | '>', Star opsymbol -> (
     let tok = lexeme lexbuf in
@@ -472,7 +472,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.BINOP_GT(pos, token_data, tok)
+    BINOP_GT(pos, token_data, tok)
   )
   | '&', Plus opsymbol -> (
     let tok = lexeme lexbuf in
@@ -480,7 +480,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.BINOP_AMP(pos, token_data, tok)
+    BINOP_AMP(pos, token_data, tok)
   )
   | '|', Plus opsymbol -> (
     let tok = lexeme lexbuf in
@@ -488,7 +488,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.BINOP_BAR(pos, token_data, tok)
+    BINOP_BAR(pos, token_data, tok)
   )
   | '^', Star opsymbol -> (
     let tok = lexeme lexbuf in
@@ -496,7 +496,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.BINOP_HAT(pos, token_data, tok)
+    BINOP_HAT(pos, token_data, tok)
   )
   | '!', Star opsymbol -> (
     let tok = lexeme lexbuf in
@@ -504,35 +504,35 @@ let rec progexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.UNOP_EXCLAM(pos, token_data, tok)
+    UNOP_EXCLAM(pos, token_data, tok)
   )
   | "?->" -> (
     let pos = get_pos lexbuf in
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.OPTIONALARROW(pos, token_data)
+    OPTIONALARROW(pos, token_data)
   )
   | "?:" -> (
     let pos = get_pos lexbuf in
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.OPTIONAL(pos, token_data)
+    OPTIONAL(pos, token_data)
   )
   | "?*" -> (
     let pos = get_pos lexbuf in
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.OMISSION(pos, token_data)
+    OMISSION(pos, token_data)
   )
   | '?' -> (
     let pos = get_pos lexbuf in
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.OPTIONALTYPE(pos, token_data)
+    OPTIONALTYPE(pos, token_data)
   )
   (* -- end: binary operators -- *)
 
@@ -544,7 +544,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.TYPEVAR(pos, token_data, xpltyvarnm)
+    TYPEVAR(pos, token_data, xpltyvarnm)
   )
 
   | '=' -> (
@@ -552,28 +552,28 @@ let rec progexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.DEFEQ(pos, token_data)
+    DEFEQ(pos, token_data)
   )
   | '*' -> (
     let pos = get_pos lexbuf in
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.EXACT_TIMES(pos, token_data)
+    EXACT_TIMES(pos, token_data)
   )
   | '&' -> (
     let pos = get_pos lexbuf in
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.EXACT_AMP(pos, token_data)
+    EXACT_AMP(pos, token_data)
   )
   | '~' -> (
     let pos = get_pos lexbuf in
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.EXACT_TILDE(pos, token_data)
+    EXACT_TILDE(pos, token_data)
   )
 
   | Plus (constructor, '.'), identifier -> (
@@ -583,7 +583,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-      Parser.VARWITHMOD(pos, token_data, mdlnmlst, varnm)
+      VARWITHMOD(pos, token_data, mdlnmlst, varnm)
   )
 
   | identifier -> (
@@ -641,7 +641,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.CONSTRUCTOR(pos, token_data, tokstr)
+    CONSTRUCTOR(pos, token_data, tokstr)
   )
 
   | ((Opt '-', digit) | (Opt '-', nzdigit, Plus digit)), identifier -> (
@@ -652,7 +652,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.LENGTHCONST(pos, token_data, size, unitnm)
+    LENGTHCONST(pos, token_data, size, unitnm)
   )
   | Opt '-', Plus digit, '.', Star digit, identifier -> (
     let tokstr = lexeme lexbuf in
@@ -662,7 +662,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.LENGTHCONST(pos, token_data, size, unitnm)
+    LENGTHCONST(pos, token_data, size, unitnm)
   )
   | Opt '-', '.', Plus digit, identifier -> (
     let tokstr = lexeme lexbuf in
@@ -672,7 +672,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.LENGTHCONST(pos, token_data, size, unitnm)
+    LENGTHCONST(pos, token_data, size, unitnm)
   )
   | digit | nzdigit, Plus digit -> (
     let i = int_of_string (lexeme lexbuf) in
@@ -680,7 +680,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.INTCONST(pos, token_data, i)
+    INTCONST(pos, token_data, i)
   )
   | ("0x" | "0X"), Plus hex -> (
     let i = int_of_string (lexeme lexbuf) in
@@ -688,7 +688,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.INTCONST(pos, token_data, i)
+    INTCONST(pos, token_data, i)
   )
   | (Plus digit, '.', Star digit) | ('.', Plus digit) -> (
     let f = float_of_string (lexeme lexbuf) in
@@ -696,7 +696,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.FLOATCONST(pos, token_data, f)
+    FLOATCONST(pos, token_data, f)
   )
 
   | '-' -> (
@@ -704,7 +704,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.EXACT_MINUS(pos, token_data)
+    EXACT_MINUS(pos, token_data)
   )
 
   | eof -> (
@@ -712,7 +712,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
       Types.make_token_data line_break_counter (List.rev comment_stack) None
     in
     if (List.length !mode_stack_ref) = 1 then
-      Parser.EOI(token_data)
+      EOI(token_data)
     else
       report_error lexbuf "text input ended while reading a program area"
   )
@@ -741,7 +741,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
     mode_push ActiveState;
-    Parser.VARINVERT(pos, token_data, [], varnm)
+    VARINVERT(pos, token_data, [], varnm)
   )
   | '#', Star (constructor, '.'), (identifier | constructor) -> (
     let csnmpure = lexeme lexbuf in
@@ -752,7 +752,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
     mode_push ActiveState;
-    Parser.VARINVERT(pos, token_data, mdlnmlst, csnm)
+    VARINVERT(pos, token_data, mdlnmlst, csnm)
   )
   | '+', (identifier | constructor), '@' -> (
     let tokstr = lexeme lexbuf in
@@ -761,7 +761,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
     mode_push ActiveState;
-    Parser.VERTMACRO(pos, token_data, tokstr)
+    VERTMACRO(pos, token_data, tokstr)
   )
   | '+', (identifier | constructor) -> (
     let tokstr = lexeme lexbuf in
@@ -770,7 +770,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
     mode_push ActiveState;
-    Parser.VERTCMD(pos, token_data, tokstr)
+    VERTCMD(pos, token_data, tokstr)
   )
   | '+', Star (constructor, '.'), (identifier | constructor) -> (
     let tokstrpure = lexeme lexbuf in
@@ -781,7 +781,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
     mode_push ActiveState;
-    Parser.VERTCMDWITHMOD(pos, token_data, mdlnmlst, "+" ^ csnm)
+    VERTCMDWITHMOD(pos, token_data, mdlnmlst, "+" ^ csnm)
   )
   | '<' -> (
     let pos = get_pos lexbuf in
@@ -789,7 +789,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
       mode_push VerticalState;
-      Parser.BVERTGRP(pos, token_data)
+      BVERTGRP(pos, token_data)
   )
   | '>' -> (
     let pos = get_pos lexbuf in
@@ -797,7 +797,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.EVERTGRP(pos, token_data)
+    EVERTGRP(pos, token_data)
   )
   | '{' -> (
     let pos = get_pos lexbuf in
@@ -805,7 +805,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
     mode_push HorizontalState;
-    Parser.BHORZGRP(pos, token_data)
+    BHORZGRP(pos, token_data)
   )
 
   | eof -> (
@@ -813,7 +813,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
       Types.make_token_data line_break_counter (List.rev comment_stack) None
     in
     if (List.length !mode_stack_ref) = 1 then
-      Parser.EOI(token_data)
+      EOI(token_data)
     else
       report_error lexbuf "unexpected end of input while reading a vertical area"
   )
@@ -838,7 +838,7 @@ and horzexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.BHORZGRP(pos, token_data)
+    BHORZGRP(pos, token_data)
   )
   | Star (break | space), '}' -> (
     mode_pop lexbuf "too many closing";
@@ -846,7 +846,7 @@ and horzexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.EHORZGRP(pos, token_data)
+    EHORZGRP(pos, token_data)
   )
   | Star (break | space), '<' -> (
     mode_push VerticalState;
@@ -854,14 +854,14 @@ and horzexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.BVERTGRP(pos, token_data)
+    BVERTGRP(pos, token_data)
   )
   | Star (break | space), '|' -> (
     let pos = get_pos_last lexbuf in
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.SEP(pos, token_data)
+    SEP(pos, token_data)
   )
   | Star (break | space), item -> (
     let item_str = remove_space_break (lexeme lexbuf) in
@@ -870,21 +870,21 @@ and horzexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.ITEM(pos, token_data, item_str_len)
+    ITEM(pos, token_data, item_str_len)
   )
   | space -> (
     let pos = get_pos lexbuf in
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.SPACE(pos, token_data)
+    SPACE(pos, token_data)
   )
   | break -> (
     let pos = get_pos lexbuf in
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.BREAK(pos, token_data)
+    BREAK(pos, token_data)
   )
   | '#', identifier -> (
     let tokstr = lexeme lexbuf in
@@ -894,7 +894,7 @@ and horzexpr line_break_counter comment_stack lexbuf =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
     mode_push ActiveState;
-    Parser.VARINHORZ(pos, token_data, [], varnm)
+    VARINHORZ(pos, token_data, [], varnm)
   )
   | '#', Star (constructor, '.'), (identifier | constructor) -> (
     let csnmpure = lexeme lexbuf in
@@ -905,7 +905,7 @@ and horzexpr line_break_counter comment_stack lexbuf =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
     mode_push ActiveState;
-    Parser.VARINHORZ(pos, token_data, mdlnmlst, csnm)
+    VARINHORZ(pos, token_data, mdlnmlst, csnm)
   )
   | '\\', (identifier | constructor), '@' -> (
     let tokstr = lexeme lexbuf in
@@ -914,7 +914,7 @@ and horzexpr line_break_counter comment_stack lexbuf =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
     mode_push ActiveState;
-    Parser.HORZMACRO(pos, token_data, tokstr)
+    HORZMACRO(pos, token_data, tokstr)
   )
   | '\\', (identifier | constructor) -> (
     let tokstr = lexeme lexbuf in
@@ -923,7 +923,7 @@ and horzexpr line_break_counter comment_stack lexbuf =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
     mode_push ActiveState;
-    Parser.HORZCMD(pos, token_data, tokstr)
+    HORZCMD(pos, token_data, tokstr)
   )
   | '\\', Star (constructor, '.'), (identifier | constructor) -> (
     let tokstrpure = lexeme lexbuf in
@@ -934,7 +934,7 @@ and horzexpr line_break_counter comment_stack lexbuf =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
     mode_push ActiveState;
-    Parser.HORZCMDWITHMOD(pos, token_data, mdlnmlst, "\\" ^ csnm)
+    HORZCMDWITHMOD(pos, token_data, mdlnmlst, "\\" ^ csnm)
   )
   | '\\', symbol -> (
     let tokstr = String.sub (lexeme lexbuf) 1 1 in
@@ -942,7 +942,7 @@ and horzexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.CHAR(pos, token_data, tokstr)
+    CHAR(pos, token_data, tokstr)
   )
   | "${" -> (
     mode_push MathState;
@@ -950,7 +950,7 @@ and horzexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.BMATHGRP(pos, token_data)
+    BMATHGRP(pos, token_data)
   )
   | Plus '`' -> (
     let pos_start = get_pos lexbuf in
@@ -961,7 +961,7 @@ and horzexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.LITERAL(pos, token_data, s, true, omit_post)
+    LITERAL(pos, token_data, s, true, omit_post)
   )
   | '#', Plus '`' -> (
     let pos_start = get_pos lexbuf in
@@ -972,14 +972,14 @@ and horzexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.LITERAL(pos, token_data, s, false, omit_post)
+    LITERAL(pos, token_data, s, false, omit_post)
   )
   | eof -> (
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) None
     in
     if (List.length !mode_stack_ref) = 1 then
-      Parser.EOI(token_data)
+      EOI(token_data)
     else
       report_error lexbuf "unexpected end of input while reading an inline text area"
   )
@@ -994,7 +994,7 @@ and horzexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.CHAR(pos, token_data, s)
+    CHAR(pos, token_data, s)
   )
   | _ -> report_error lexbuf "unexpected character in a text area"
 
@@ -1013,14 +1013,14 @@ and mathexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.OPTIONAL(pos, token_data)
+    OPTIONAL(pos, token_data)
   )
   | "?*" -> (
     let pos = get_pos lexbuf in
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.OMISSION(pos, token_data)
+    OMISSION(pos, token_data)
   )
   | "!{" -> (
     let pos = get_pos lexbuf in
@@ -1028,7 +1028,7 @@ and mathexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.BHORZGRP(pos, token_data)
+    BHORZGRP(pos, token_data)
   )
   | "!<" -> (
     let pos = get_pos lexbuf in
@@ -1036,7 +1036,7 @@ and mathexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.BVERTGRP(pos, token_data)
+    BVERTGRP(pos, token_data)
   )
   | "!(|" -> (
     let pos = get_pos lexbuf in
@@ -1044,7 +1044,7 @@ and mathexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.BRECORD(pos, token_data)
+    BRECORD(pos, token_data)
   )
   | "!(" -> (
     let pos = get_pos lexbuf in
@@ -1052,7 +1052,7 @@ and mathexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.LPAREN(pos, token_data)
+    LPAREN(pos, token_data)
   )
   | "![" -> (
     let pos = get_pos lexbuf in
@@ -1060,7 +1060,7 @@ and mathexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.BLIST(pos, token_data)
+    BLIST(pos, token_data)
   )
   | '{' -> (
     let pos = get_pos lexbuf in
@@ -1068,7 +1068,7 @@ and mathexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.BMATHGRP(pos, token_data)
+    BMATHGRP(pos, token_data)
   )
   | '}' -> (
     let pos = get_pos lexbuf in
@@ -1076,28 +1076,28 @@ and mathexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.EMATHGRP(pos, token_data)
+    EMATHGRP(pos, token_data)
   )
   | '|' -> (
     let pos = get_pos lexbuf in
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.SEP(pos, token_data)
+    SEP(pos, token_data)
   )
   | '^' -> (
     let pos = get_pos lexbuf in
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.SUPERSCRIPT(pos, token_data)
+    SUPERSCRIPT(pos, token_data)
   )
   | '_' -> (
     let pos = get_pos lexbuf in
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.SUBSCRIPT(pos, token_data)
+    SUBSCRIPT(pos, token_data)
   )
   | Plus "\'" -> (
     let n = String.length (lexeme lexbuf) in
@@ -1105,7 +1105,7 @@ and mathexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.PRIMES(pos, token_data, n)
+    PRIMES(pos, token_data, n)
   )
   | mathsymboltop, Star mathsymbol -> (
     let str = lexeme lexbuf in
@@ -1113,7 +1113,7 @@ and mathexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.MATHCHARS(pos, token_data, str)
+    MATHCHARS(pos, token_data, str)
   )
   | mathascii -> (
     let str = lexeme lexbuf in
@@ -1121,7 +1121,7 @@ and mathexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.MATHCHARS(pos, token_data, str)
+    MATHCHARS(pos, token_data, str)
   )
   | '#', identifier -> (
     let tokstr = lexeme lexbuf in
@@ -1130,7 +1130,7 @@ and mathexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.VARINMATH(pos, token_data, [], varnm)
+    VARINMATH(pos, token_data, [], varnm)
   )
   | '#', Star (constructor, '.'), (identifier | constructor) -> (
     let csnmpure = lexeme lexbuf in
@@ -1140,7 +1140,7 @@ and mathexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.VARINMATH(pos, token_data, mdlnmlst, csnm)
+    VARINMATH(pos, token_data, mdlnmlst, csnm)
   )
   | '\\', (identifier | constructor) -> (
     let tokstr = lexeme lexbuf in
@@ -1148,7 +1148,7 @@ and mathexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.MATHCMD(pos, token_data, tokstr)
+    MATHCMD(pos, token_data, tokstr)
   )
   | '\\', Star (constructor, '.'), (identifier | constructor) -> (
     let tokstrpure = lexeme lexbuf in
@@ -1158,7 +1158,7 @@ and mathexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.MATHCMDWITHMOD(pos, token_data, mdlnmlst, "\\" ^ csnm)
+    MATHCMDWITHMOD(pos, token_data, mdlnmlst, "\\" ^ csnm)
   )
   | '\\', symbol -> (
     let tok = String.sub (lexeme lexbuf) 1 1 in
@@ -1166,7 +1166,7 @@ and mathexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.MATHCHARS(pos, token_data, tok)
+    MATHCHARS(pos, token_data, tok)
   )
 
   | any -> (
@@ -1179,7 +1179,7 @@ and mathexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.MATHCHARS(pos, token_data, s)
+    MATHCHARS(pos, token_data, s)
   )
   | _ -> report_error lexbuf "unexpected character in a math area"
 
@@ -1198,21 +1198,21 @@ and active line_break_counter comment_stack lexbuf  =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.OPTIONAL(pos, token_data)
+    OPTIONAL(pos, token_data)
   )
   | "?*" -> (
     let pos = get_pos lexbuf in
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.OMISSION(pos, token_data)
+    OMISSION(pos, token_data)
   )
   | '~' -> (
     let pos = get_pos lexbuf in
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.EXACT_TILDE(pos, token_data)
+    EXACT_TILDE(pos, token_data)
   )
   | "(|" -> (
     let pos = get_pos lexbuf in
@@ -1220,7 +1220,7 @@ and active line_break_counter comment_stack lexbuf  =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.BRECORD(pos, token_data)
+    BRECORD(pos, token_data)
   )
   | '(' -> (
     let pos = get_pos lexbuf in
@@ -1228,7 +1228,7 @@ and active line_break_counter comment_stack lexbuf  =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.LPAREN(pos, token_data)
+    LPAREN(pos, token_data)
   )
   | '[' -> (
     let pos = get_pos lexbuf in
@@ -1236,7 +1236,7 @@ and active line_break_counter comment_stack lexbuf  =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.BLIST(pos, token_data)
+    BLIST(pos, token_data)
   )
   | '{' -> (
     let pos = get_pos lexbuf in
@@ -1245,7 +1245,7 @@ and active line_break_counter comment_stack lexbuf  =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.BHORZGRP(pos, token_data)
+    BHORZGRP(pos, token_data)
   )
   | '<' -> (
     let pos = get_pos lexbuf in
@@ -1254,7 +1254,7 @@ and active line_break_counter comment_stack lexbuf  =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.BVERTGRP(pos, token_data)
+    BVERTGRP(pos, token_data)
   )
   | ';' -> (
     let pos = get_pos lexbuf in
@@ -1262,7 +1262,7 @@ and active line_break_counter comment_stack lexbuf  =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    Parser.ENDACTIVE(pos, token_data)
+    ENDACTIVE(pos, token_data)
   )
   | eof -> (
       report_error lexbuf "unexpected end of input while reading an active area"
