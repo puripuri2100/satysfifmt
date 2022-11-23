@@ -5,8 +5,8 @@
   (libraries  ;;toml
               menhirLib
               sedlex
-              uutf
               str
+              batteries
   )
   (preprocess
             (pps
@@ -14,10 +14,6 @@
               sedlex.ppx
             ))
 )
-
-(copy_files# backend/*.{ml,mli})
-(copy_files# frontend/*.{ml,mli})
-(copy_files  frontend/*.{mly})
 
 
 (menhir

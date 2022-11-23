@@ -2,13 +2,13 @@ open Arg
 open Filename
 
 open OptionState
-open Parser_
 open Parser
 open Lexer
 open Error
+open Types
 
 
-(*
+
 let parse lexbuf =
   let lexer () =
     let (ante_position, post_position) =
@@ -18,12 +18,13 @@ let parse lexbuf =
     (token, ante_position, post_position)
   in
   let parser =
-    MenhirLib.Convert.Simplified.traditional2revised main
+    MenhirLib.Convert.Simplified.traditional2revised Parser.main
   in
   parser lexer
-*)
+
 
   (* テスト用　lexerが返したトークンをプリントする *)
+(*
 let test_parse lexbuf =
   let rec sub () =
     let token = Lexer.lex lexbuf in
@@ -32,6 +33,7 @@ let test_parse lexbuf =
     | _ -> Printf.printf "%s\n" (show_token token); sub ()
   in
   sub ()
+*)
 
 
 
@@ -89,7 +91,8 @@ let main =
       Sedlexing.Utf8.from_channel file_channel
     in
     let () = Sedlexing.set_filename lexbuf input_file_name in
-    let () = test_parse lexbuf in
+    let (head_rwc_lst, body_rwc) = parse lexbuf in
+    (*let () = Printf.printf "%s\n" (Types.show_rule body_rwc.rule) in*)
     let _ = close_in file_channel in
     ()
   )

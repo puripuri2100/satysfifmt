@@ -18,7 +18,7 @@ depends: [
   "toml" {>= "7.0.0" & < "8.0.0"}
   "sedlex" {>= "2.2" & < "3.0"}
   "ppx_deriving"
-  "uutf"
+  "batteries"
 ]
 build: [
   [make "-f" "Makefile" "build" "PREFIX=%{prefix}%"]

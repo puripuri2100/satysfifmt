@@ -1,11 +1,11 @@
 open Sedlexing
-open Parser_
+open Parser
 open Range
 open Lexing
 open Error
 open Logging
 open Types
-
+open Hashtbl
 
 
 (*
@@ -130,8 +130,8 @@ let capital = [%sedlex.regexp? 'A'..'Z']
 let small = [%sedlex.regexp? 'a'..'z']
 let latin = [%sedlex.regexp? small | capital]
 let item = [%sedlex.regexp? Plus '*']
-let identifier = [%sedlex.regexp? small, Star (digit | latin | '-')]
-let constructor = [%sedlex.regexp? capital, Star (digit | latin | '-')]
+let lower = [%sedlex.regexp? small, Star (digit | latin | '-')]
+let upper = [%sedlex.regexp? capital, Star (digit | latin | '-')]
 let symbol = [%sedlex.regexp? ' '..'@' | '['..'`' | '{'..'~']
 let opsymbol = [%sedlex.regexp? '+' | '-' | '*' | '/' | '^' | '&' | '|' | '!' | ':' | '=' | '<' | '>' | '~' | '\'' | '.' | '?']
 let notstr = [%sedlex.regexp? ' ' | '\t' | '\n' | '\r' | '@' | '`' | '\\' | '{' | '}' | '<' | '>' | '%' | '|' | '*' | '$' | '#' | ';']
@@ -173,7 +173,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
             input_column    = col;
           }
         in
-        POSITIONED_LITERAL(pos, token_data, ipos, s)
+        POSITIONED_STRING(pos, token_data, ipos, s)
   )
   | '@' -> (
     let (headertype, content) = lex_header lexbuf in
@@ -184,16 +184,6 @@ let rec progexpr line_break_counter comment_stack lexbuf =
     match headertype with
     | "require" -> HEADER_REQUIRE(pos, token_data, content)
     | "import"  -> HEADER_IMPORT(pos, token_data, content)
-
-    | "stage" ->
-        begin
-          match content with
-          | "persistent" -> HEADER_PERSISTENT0(pos, token_data)
-          | "0"          -> HEADER_STAGE0(pos, token_data)
-          | "1"          -> HEADER_STAGE1(pos, token_data)
-          | _            -> raise (LexError(pos, "undefined stage type '" ^ content ^ "'; should be 'persistent', '0', or '1'."))
-        end
-
     | _ ->
         raise (LexError(pos, "undefined header type '" ^ headertype ^ "'"))
   )
@@ -205,7 +195,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
     mode_push ProgramState;
-    BRECORD(pos, token_data)
+    L_RECORD(pos, token_data)
   )
   | "|)" -> (
     let pos = get_pos lexbuf in
@@ -213,7 +203,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    ERECORD(pos, token_data)
+    R_RECORD(pos, token_data)
   )
   | '(' -> (
     let pos = get_pos lexbuf in
@@ -221,7 +211,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
     mode_push ProgramState;
-    LPAREN(pos, token_data)
+    L_PAREN(pos, token_data)
   )
   | ')' -> (
     let pos = get_pos lexbuf in
@@ -229,7 +219,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    RPAREN(pos, token_data)
+    R_PAREN(pos, token_data)
   )
   | '[' -> (
     let pos = get_pos lexbuf in
@@ -237,7 +227,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
     mode_push ProgramState;
-    BLIST(pos, token_data)
+    L_SQUARE(pos, token_data)
   )
   | ']' -> (
     let pos = get_pos lexbuf in
@@ -245,22 +235,23 @@ let rec progexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    ELIST(pos, token_data)
+    R_SQUARE(pos, token_data)
   )
-  | ';' -> (
+  | "{", Star (break | space),"|" -> (
     let pos = get_pos lexbuf in
     let token_data =
-      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
+      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment_horz lexbuf)
     in
-    LISTPUNCT(pos, token_data)
+    mode_push HorizontalState;
+    L_INLINE_TEXT_LIST(pos, token_data)
   )
   | '{' -> (
     let pos = get_pos lexbuf in
     let token_data =
-      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
+      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment_horz lexbuf)
     in
     mode_push HorizontalState;
-    BHORZGRP(pos, token_data)
+    L_INLINE_TEXT(pos, token_data)
   )
   | "\'<" -> (
     let pos = get_pos lexbuf in
@@ -268,7 +259,15 @@ let rec progexpr line_break_counter comment_stack lexbuf =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
     mode_push VerticalState;
-    BVERTGRP(pos, token_data)
+    L_BLOCK_TEXT(pos, token_data)
+  )
+  | "{", Star (break | space),"|" -> (
+    let pos = get_pos lexbuf in
+    let token_data =
+      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
+    in
+    mode_push MathState;
+    L_MATH_TEXT_LIST(pos, token_data)
   )
   | "${" -> (
     let pos = get_pos lexbuf in
@@ -276,35 +275,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
     mode_push MathState;
-    BMATHGRP(pos, token_data)
-  )
-  | "<[" -> (
-    let pos = get_pos lexbuf in
-    let token_data =
-      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
-    in
-    BPATH(pos, token_data)
-  )
-  | "]>" -> (
-    let pos = get_pos lexbuf in
-    let token_data =
-      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
-    in
-    EPATH(pos, token_data)
-  )
-  | ".." -> (
-    let pos = get_pos lexbuf in
-    let token_data =
-      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
-    in
-    PATHCURVE(pos, token_data)
-  )
-  | "--" -> (
-    let pos = get_pos lexbuf in
-    let token_data =
-      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
-    in
-    PATHLINE(pos, token_data)
+    L_MATH_TEXT(pos, token_data)
   )
   | Plus '`' -> (
     let pos_start = get_pos lexbuf in
@@ -315,7 +286,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    LITERAL(pos, token_data, s, true, omit_post)
+    STRING(pos, token_data, s, true, omit_post)
   )
   | '#', Plus '`' -> (
     let pos_start = get_pos lexbuf in
@@ -326,39 +297,39 @@ let rec progexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    LITERAL(pos, token_data, s, false, omit_post)
+    STRING(pos, token_data, s, false, omit_post)
   )
-  | '\\', (identifier | constructor), '@' -> (
+  | '\\', (lower| upper), '@' -> (
     let tokstr = lexeme lexbuf in
     let pos = get_pos lexbuf in
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    HORZMACRO(pos, token_data, tokstr)
+    BACKSLASH_MACRO(pos, token_data, tokstr)
   )
-  | '\\', (identifier | constructor) -> (
+  | '\\', (lower | upper) -> (
     let tokstr = lexeme lexbuf in
     let pos = get_pos lexbuf in
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    HORZCMD(pos, token_data, tokstr)
+    BACKSLASH_CMD(pos, token_data, tokstr)
   )
-  | '+', (identifier | constructor), '@' -> (
+  | '+', (lower | upper), '@' -> (
     let tokstr = lexeme lexbuf in
     let pos = get_pos lexbuf in
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    VERTMACRO(pos, token_data, tokstr)
+    PLUS_MACRO(pos, token_data, tokstr)
   )
-  | '+', (identifier | constructor) -> (
+  | '+', (lower | upper) -> (
     let tokstr = lexeme lexbuf in
     let pos = get_pos lexbuf in
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    VERTCMD(pos, token_data, tokstr)
+    PLUS_CMD(pos, token_data, tokstr)
   )
   | '#' -> (
     let pos = get_pos lexbuf in
@@ -366,6 +337,30 @@ let rec progexpr line_break_counter comment_stack lexbuf =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
     ACCESS(pos, token_data)
+  )
+  | "?'", lower -> (
+    let tok = lexeme lexbuf in
+    let tok_len = String.length tok in
+    let xpltyvarnm = String.sub tok 2 (tok_len - 2) in
+    let pos = get_pos lexbuf in
+    let token_data =
+      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
+    in
+    ROWVAR(pos, token_data, xpltyvarnm)
+  )
+  | "?" -> (
+    let pos = get_pos lexbuf in
+    let token_data =
+      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
+    in
+    QUESTION(pos, token_data)
+  )
+  | ":>" -> (
+    let pos = get_pos lexbuf in
+    let token_data =
+      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
+    in
+    COERCE(pos, token_data)
   )
   | "->" -> (
     let pos = get_pos lexbuf in
@@ -379,14 +374,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    OVERWRITEEQ(pos, token_data)
-  )
-  | '|' -> (
-    let pos = get_pos lexbuf in
-    let token_data =
-      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
-    in
-    BAR(pos, token_data)
+    REVERSED_ARROW(pos, token_data)
   )
   | '_' -> (
     let pos = get_pos lexbuf in
@@ -394,6 +382,13 @@ let rec progexpr line_break_counter comment_stack lexbuf =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
     WILDCARD(pos, token_data)
+  )
+  | ',' -> (
+    let pos = get_pos lexbuf in
+    let token_data =
+      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
+    in
+    COMMA(pos, token_data)
   )
   | "::" -> (
     let pos = get_pos lexbuf in
@@ -408,13 +403,6 @@ let rec progexpr line_break_counter comment_stack lexbuf =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
     COLON(pos, token_data)
-  )
-  | ',' -> (
-    let pos = get_pos lexbuf in
-    let token_data =
-      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
-    in
-    COMMA(pos, token_data)
   )
 
   (* -- start: binary operators -- *)
@@ -506,37 +494,10 @@ let rec progexpr line_break_counter comment_stack lexbuf =
     in
     UNOP_EXCLAM(pos, token_data, tok)
   )
-  | "?->" -> (
-    let pos = get_pos lexbuf in
-    let token_data =
-      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
-    in
-    OPTIONALARROW(pos, token_data)
-  )
-  | "?:" -> (
-    let pos = get_pos lexbuf in
-    let token_data =
-      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
-    in
-    OPTIONAL(pos, token_data)
-  )
-  | "?*" -> (
-    let pos = get_pos lexbuf in
-    let token_data =
-      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
-    in
-    OMISSION(pos, token_data)
-  )
-  | '?' -> (
-    let pos = get_pos lexbuf in
-    let token_data =
-      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
-    in
-    OPTIONALTYPE(pos, token_data)
-  )
   (* -- end: binary operators -- *)
 
-  | '\'', identifier -> (
+
+  | '\'', lower -> (
     let tok = lexeme lexbuf in
     let tok_len = String.length tok in
     let xpltyvarnm = String.sub tok 1 (tok_len - 1) in
@@ -547,12 +508,151 @@ let rec progexpr line_break_counter comment_stack lexbuf =
     TYPEVAR(pos, token_data, xpltyvarnm)
   )
 
+  | Plus (upper, '.'), lower -> (
+    let tokstr = lexeme lexbuf in
+    let pos = get_pos lexbuf in
+    let (mdlnmlst, varnm) = split_module_list tokstr in
+    let token_data =
+      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
+    in
+      LONG_LOWER(pos, token_data, mdlnmlst, varnm)
+  )
+
+  | lower -> (
+    let tokstr = lexeme lexbuf in
+    let pos = get_pos lexbuf in
+    let token_data =
+      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
+    in
+    match tokstr with
+    | "and"       -> AND(pos, token_data)
+    | "as"        -> AS(pos, token_data)
+    | "block"     -> BLOCK(pos, token_data)
+    | "command"   -> COMMAND(pos, token_data)
+    | "else"      -> ELSE(pos, token_data)
+    | "end"       -> END(pos, token_data)
+    | "false"     -> FALSE(pos, token_data)
+    | "fun"       -> FUN(pos, token_data)
+    | "if"        -> IF(pos, token_data)
+    | "include"   -> INCLUDE(pos, token_data)
+    | "inline"    -> INLINE(pos, token_data)
+    | "in"        -> IN(pos, token_data)
+    | "let"       -> LET(pos, token_data)
+    | "mod"       -> MOD(pos, token_data)
+    | "match"     -> MATCH(pos, token_data)
+    | "math"      -> MATH(pos, token_data)
+    | "module"    -> MODULE(pos, token_data)
+    | "mutable"   -> MUTABLE(pos, token_data)
+    | "of"        -> OF(pos, token_data)
+    | "open"      -> OPEN(pos, token_data)
+    | "persistent"-> PERSISTENT(pos, token_data)
+    | "rec"       -> REC(pos, token_data)
+    | "signature" -> SIGNATURE(pos, token_data)
+    | "sig"       -> SIG(pos, token_data)
+    | "struct"    -> STRUCT(pos, token_data)
+    | "then"      -> THEN(pos, token_data)
+    | "true"      -> TRUE(pos, token_data)
+    | "type"      -> TYPE(pos, token_data)
+    | "val"       -> VAL(pos, token_data)
+    | "with"      -> WITH(pos, token_data)
+    | _           -> LOWER(pos, token_data, tokstr)
+  )
+
+  | Plus (upper, '.'), upper -> (
+    let tokstr = lexeme lexbuf in
+    let pos = get_pos lexbuf in
+    let (mdlnmlst, varnm) = split_module_list tokstr in
+    let token_data =
+      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
+    in
+      LONG_UPPER(pos, token_data, mdlnmlst, varnm)
+  )
+
+  | upper -> (
+    let tokstr = lexeme lexbuf in
+    let pos = get_pos lexbuf in
+    let token_data =
+      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
+    in
+    UPPER(pos, token_data, tokstr)
+  )
+
+  | ((Opt '-', digit) | (Opt '-', nzdigit, Plus digit)), lower -> (
+    let tokstr = lexeme lexbuf in
+    let (size_str, unitnm) = split_length_unitnm tokstr in
+    let size = size_str |> int_of_string |> float_of_int in
+    let pos = get_pos lexbuf in
+    let token_data =
+      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
+    in
+    LENGTH(pos, token_data, size, unitnm)
+  )
+  | Opt '-', Plus digit, '.', Star digit, lower -> (
+    let tokstr = lexeme lexbuf in
+    let (size_str, unitnm) = split_length_unitnm tokstr in
+    let size = size_str |> float_of_string in
+    let pos = get_pos lexbuf in
+    let token_data =
+      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
+    in
+    LENGTH(pos, token_data, size, unitnm)
+  )
+  | Opt '-', '.', Plus digit, lower -> (
+    let tokstr = lexeme lexbuf in
+    let (size_str, unitnm) = split_length_unitnm tokstr in
+    let size = size_str |> float_of_string in
+    let pos = get_pos lexbuf in
+    let token_data =
+      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
+    in
+    LENGTH(pos, token_data, size, unitnm)
+  )
+  | (Opt '-', digit) | (Opt '-', nzdigit, Plus digit) -> (
+    let i = int_of_string (lexeme lexbuf) in
+    let pos = get_pos lexbuf in
+    let token_data =
+      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
+    in
+    INT(pos, token_data, i)
+  )
+  | ("0x" | "0X"), Plus hex -> (
+    let i = int_of_string (lexeme lexbuf) in
+    let pos = get_pos lexbuf in
+    let token_data =
+      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
+    in
+    INT(pos, token_data, i)
+  )
+  | (Opt '-', Plus digit, '.', Star digit) | (Opt '-', '.', Plus digit) -> (
+    let f = float_of_string (lexeme lexbuf) in
+    let pos = get_pos lexbuf in
+    let token_data =
+      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
+    in
+    FLOAT(pos, token_data, f)
+  )
+
+  (* -- start: exact binary operators -- *)
+  | '|' -> (
+    let pos = get_pos lexbuf in
+    let token_data =
+      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
+    in
+    BAR(pos, token_data)
+  )
+  | '-' -> (
+    let pos = get_pos lexbuf in
+    let token_data =
+      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
+    in
+    EXACT_MINUS(pos, token_data)
+  )
   | '=' -> (
     let pos = get_pos lexbuf in
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    DEFEQ(pos, token_data)
+    EXACT_EQ(pos, token_data)
   )
   | '*' -> (
     let pos = get_pos lexbuf in
@@ -575,144 +675,15 @@ let rec progexpr line_break_counter comment_stack lexbuf =
     in
     EXACT_TILDE(pos, token_data)
   )
-
-  | Plus (constructor, '.'), identifier -> (
-    let tokstr = lexeme lexbuf in
-    let pos = get_pos lexbuf in
-    let (mdlnmlst, varnm) = split_module_list tokstr in
-    let token_data =
-      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
-    in
-      VARWITHMOD(pos, token_data, mdlnmlst, varnm)
-  )
-
-  | identifier -> (
-    let tokstr = lexeme lexbuf in
-    let pos = get_pos lexbuf in
-    let token_data =
-      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
-    in
-    match tokstr with
-    | "not"               -> LNOT(pos, token_data)
-    | "mod"               -> MOD(pos, token_data)
-    | "if"                -> IF(pos, token_data)
-    | "then"              -> THEN(pos, token_data)
-    | "else"              -> ELSE(pos, token_data)
-    | "let"               -> LETNONREC(pos, token_data)
-    | "let-rec"           -> LETREC(pos, token_data)
-    | "and"               -> LETAND(pos, token_data)
-    | "in"                -> IN(pos, token_data)
-    | "fun"               -> LAMBDA(pos, token_data)
-    | "true"              -> TRUE(pos, token_data)
-    | "false"             -> FALSE(pos, token_data)
-    | "before"            -> BEFORE(pos, token_data)
-    | "while"             -> WHILE(pos, token_data)
-    | "do"                -> DO(pos, token_data)
-    | "let-mutable"       -> LETMUTABLE(pos, token_data)
-    | "match"             -> MATCH(pos, token_data)
-    | "with"              -> WITH(pos, token_data)
-    | "when"              -> WHEN(pos, token_data)
-    | "as"                -> AS(pos, token_data)
-    | "type"              -> TYPE(pos, token_data)
-    | "of"                -> OF(pos, token_data)
-    | "module"            -> MODULE(pos, token_data)
-    | "struct"            -> STRUCT(pos, token_data)
-    | "sig"               -> SIG(pos, token_data)
-    | "val"               -> VAL(pos, token_data)
-    | "end"               -> END(pos, token_data)
-    | "direct"            -> DIRECT(pos, token_data)
-    | "constraint"        -> CONSTRAINT(pos, token_data)
-    | "let-inline"        -> LETHORZ(pos, token_data)
-    | "let-block"         -> LETVERT(pos, token_data)
-    | "let-math"          -> LETMATH(pos, token_data)
-    | "controls"          -> CONTROLS(pos, token_data)
-    | "cycle"             -> CYCLE(pos, token_data)
-    | "inline-cmd"        -> HORZCMDTYPE(pos, token_data)
-    | "block-cmd"         -> VERTCMDTYPE(pos, token_data)
-    | "math-cmd"          -> MATHCMDTYPE(pos, token_data)
-    | "command"           -> COMMAND(pos, token_data)
-    | "open"              -> OPEN(pos, token_data)
-    | _                   -> VAR(pos, token_data, tokstr)
-  )
-
-  | constructor -> (
-    let tokstr = lexeme lexbuf in
-    let pos = get_pos lexbuf in
-    let token_data =
-      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
-    in
-    CONSTRUCTOR(pos, token_data, tokstr)
-  )
-
-  | ((Opt '-', digit) | (Opt '-', nzdigit, Plus digit)), identifier -> (
-    let tokstr = lexeme lexbuf in
-    let (size_str, unitnm) = split_length_unitnm tokstr in
-    let size = size_str |> int_of_string |> float_of_int in
-    let pos = get_pos lexbuf in
-    let token_data =
-      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
-    in
-    LENGTHCONST(pos, token_data, size, unitnm)
-  )
-  | Opt '-', Plus digit, '.', Star digit, identifier -> (
-    let tokstr = lexeme lexbuf in
-    let (size_str, unitnm) = split_length_unitnm tokstr in
-    let size = size_str |> float_of_string in
-    let pos = get_pos lexbuf in
-    let token_data =
-      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
-    in
-    LENGTHCONST(pos, token_data, size, unitnm)
-  )
-  | Opt '-', '.', Plus digit, identifier -> (
-    let tokstr = lexeme lexbuf in
-    let (size_str, unitnm) = split_length_unitnm tokstr in
-    let size = size_str |> float_of_string in
-    let pos = get_pos lexbuf in
-    let token_data =
-      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
-    in
-    LENGTHCONST(pos, token_data, size, unitnm)
-  )
-  | digit | nzdigit, Plus digit -> (
-    let i = int_of_string (lexeme lexbuf) in
-    let pos = get_pos lexbuf in
-    let token_data =
-      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
-    in
-    INTCONST(pos, token_data, i)
-  )
-  | ("0x" | "0X"), Plus hex -> (
-    let i = int_of_string (lexeme lexbuf) in
-    let pos = get_pos lexbuf in
-    let token_data =
-      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
-    in
-    INTCONST(pos, token_data, i)
-  )
-  | (Plus digit, '.', Star digit) | ('.', Plus digit) -> (
-    let f = float_of_string (lexeme lexbuf) in
-    let pos = get_pos lexbuf in
-    let token_data =
-      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
-    in
-    FLOATCONST(pos, token_data, f)
-  )
-
-  | '-' -> (
-    let pos = get_pos lexbuf in
-    let token_data =
-      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
-    in
-    EXACT_MINUS(pos, token_data)
-  )
+  (* -- end: exact binary operators -- *)
 
   | eof -> (
+    let pos = get_pos lexbuf in
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) None
     in
     if (List.length !mode_stack_ref) = 1 then
-      EOI(token_data)
+      EOI(pos, token_data)
     else
       report_error lexbuf "text input ended while reading a program area"
   )
@@ -724,16 +695,16 @@ let rec progexpr line_break_counter comment_stack lexbuf =
   | _ -> report_error lexbuf "illegal token in a program area"
 
 
-  and vertexpr line_break_counter comment_stack lexbuf =
+  and lex_block line_break_counter comment_stack lexbuf =
   match%sedlex lexbuf with
   | '%' -> (
     let buffer = Buffer.create 256 in
     let (comment_str, lexbuf) = comment buffer lexbuf in
-    vertexpr 0 ((line_break_counter, comment_str)::comment_stack) lexbuf
+    lex_block 0 ((line_break_counter, comment_str)::comment_stack) lexbuf
   )
-  | space -> vertexpr line_break_counter comment_stack lexbuf
-  | break -> vertexpr (line_break_counter + 1) comment_stack lexbuf
-  | '#', identifier -> (
+  | space -> lex_block line_break_counter comment_stack lexbuf
+  | break -> lex_block (line_break_counter + 1) comment_stack lexbuf
+  | '#', lower -> (
     let tokstr = lexeme lexbuf in
     let varnm = String.sub tokstr 1 ((String.length tokstr) - 1) in
     let pos = get_pos lexbuf in
@@ -741,9 +712,9 @@ let rec progexpr line_break_counter comment_stack lexbuf =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
     mode_push ActiveState;
-    VARINVERT(pos, token_data, [], varnm)
+    VAR_IN_TEXT(pos, token_data, [], varnm)
   )
-  | '#', Star (constructor, '.'), (identifier | constructor) -> (
+  | '#', Star (upper, '.'), (lower | upper) -> (
     let csnmpure = lexeme lexbuf in
     let csstr = String.sub csnmpure 1 ((String.length csnmpure) - 1) in
     let (mdlnmlst, csnm) = split_module_list csstr in
@@ -752,27 +723,27 @@ let rec progexpr line_break_counter comment_stack lexbuf =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
     mode_push ActiveState;
-    VARINVERT(pos, token_data, mdlnmlst, csnm)
+    VAR_IN_TEXT(pos, token_data, mdlnmlst, csnm)
   )
-  | '+', (identifier | constructor), '@' -> (
+  | '+', (lower | upper), '@' -> (
     let tokstr = lexeme lexbuf in
     let pos = get_pos lexbuf in
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
     mode_push ActiveState;
-    VERTMACRO(pos, token_data, tokstr)
+    PLUS_MACRO(pos, token_data, tokstr)
   )
-  | '+', (identifier | constructor) -> (
+  | '+', (lower | upper) -> (
     let tokstr = lexeme lexbuf in
     let pos = get_pos lexbuf in
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
     mode_push ActiveState;
-    VERTCMD(pos, token_data, tokstr)
+    PLUS_CMD(pos, token_data, tokstr)
   )
-  | '+', Star (constructor, '.'), (identifier | constructor) -> (
+  | '+', Star (upper, '.'), (lower | upper) -> (
     let tokstrpure = lexeme lexbuf in
     let tokstr = String.sub tokstrpure 1 ((String.length tokstrpure) - 1) in
     let (mdlnmlst, csnm) = split_module_list tokstr in
@@ -781,7 +752,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
     mode_push ActiveState;
-    VERTCMDWITHMOD(pos, token_data, mdlnmlst, "+" ^ csnm)
+    LONG_PLUS_CMD(pos, token_data, mdlnmlst, csnm)
   )
   | '<' -> (
     let pos = get_pos lexbuf in
@@ -789,7 +760,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
       mode_push VerticalState;
-      BVERTGRP(pos, token_data)
+      L_BLOCK_TEXT(pos, token_data)
   )
   | '>' -> (
     let pos = get_pos lexbuf in
@@ -797,15 +768,23 @@ let rec progexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    EVERTGRP(pos, token_data)
+    R_BLOCK_TEXT(pos, token_data)
+  )
+  | "{", Star (break | space),"|" -> (
+    let pos = get_pos lexbuf in
+    let token_data =
+      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment_horz lexbuf)
+    in
+    mode_push HorizontalState;
+    L_INLINE_TEXT_LIST(pos, token_data)
   )
   | '{' -> (
     let pos = get_pos lexbuf in
     let token_data =
-      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
+      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment_horz lexbuf)
     in
     mode_push HorizontalState;
-    BHORZGRP(pos, token_data)
+    L_INLINE_TEXT(pos, token_data)
   )
 
   | eof -> (
@@ -813,7 +792,8 @@ let rec progexpr line_break_counter comment_stack lexbuf =
       Types.make_token_data line_break_counter (List.rev comment_stack) None
     in
     if (List.length !mode_stack_ref) = 1 then
-      EOI(token_data)
+      let pos = get_pos lexbuf in
+      EOI(pos, token_data)
     else
       report_error lexbuf "unexpected end of input while reading a vertical area"
   )
@@ -825,68 +805,84 @@ let rec progexpr line_break_counter comment_stack lexbuf =
   | _ -> report_error lexbuf "unexpected character in a vertical area"
 
 
-and horzexpr line_break_counter comment_stack lexbuf =
+and lex_inline line_break_counter comment_stack lexbuf =
   match%sedlex lexbuf with
   | '%' -> (
     let buffer = Buffer.create 256 in
     let (comment_str, lexbuf) = comment buffer lexbuf in
-    horzexpr 0 ((line_break_counter, comment_str)::comment_stack) lexbuf
+    lex_inline 0 ((line_break_counter, comment_str)::comment_stack) lexbuf
+  )
+  | Star (break | space), "{", Star (break | space),"|" -> (
+    mode_push HorizontalState;
+    let pos = get_pos_last lexbuf in
+    let token_data =
+      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment_horz lexbuf)
+    in
+    L_INLINE_TEXT_LIST(pos, token_data)
   )
   | Star (break | space), '{' -> (
     mode_push HorizontalState;
     let pos = get_pos_last lexbuf in
     let token_data =
-      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
+      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment_horz lexbuf)
     in
-    BHORZGRP(pos, token_data)
+    L_INLINE_TEXT(pos, token_data)
+  )
+  | Star (break | space), "|", Star (break | space),"}" -> (
+    mode_pop lexbuf "too many closing";
+    let pos = get_pos_last lexbuf in
+    let token_data =
+      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment_horz lexbuf)
+    in
+    R_INLINE_TEXT_LIST(pos, token_data)
   )
   | Star (break | space), '}' -> (
     mode_pop lexbuf "too many closing";
     let pos = get_pos_last lexbuf in
     let token_data =
-      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
+      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment_horz lexbuf)
     in
-    EHORZGRP(pos, token_data)
+    R_INLINE_TEXT(pos, token_data)
   )
   | Star (break | space), '<' -> (
     mode_push VerticalState;
     let pos = get_pos_last lexbuf in
     let token_data =
-      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
+      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment_horz lexbuf)
     in
-    BVERTGRP(pos, token_data)
+    L_BLOCK_TEXT(pos, token_data)
   )
   | Star (break | space), '|' -> (
     let pos = get_pos_last lexbuf in
     let token_data =
-      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
+      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment_horz lexbuf)
     in
-    SEP(pos, token_data)
+    BAR(pos, token_data)
   )
   | Star (break | space), item -> (
     let item_str = remove_space_break (lexeme lexbuf) in
     let item_str_len = String.length item_str in
     let pos = get_pos_last_num item_str_len lexbuf in
     let token_data =
-      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
+      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment_horz lexbuf)
     in
     ITEM(pos, token_data, item_str_len)
   )
   | space -> (
     let pos = get_pos lexbuf in
     let token_data =
-      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
+      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment_horz lexbuf)
     in
     SPACE(pos, token_data)
   )
   | break -> (
     let pos = get_pos lexbuf in
     let token_data =
-      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
+      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment_horz lexbuf)
     in
     BREAK(pos, token_data)
   )
-  | '#', identifier -> (
+  | '#', lower -> (
     let tokstr = lexeme lexbuf in
     let varnm = String.sub tokstr 1 ((String.length tokstr) - 1) in
     let pos = get_pos lexbuf in
@@ -894,9 +890,9 @@ and horzexpr line_break_counter comment_stack lexbuf =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
     mode_push ActiveState;
-    VARINHORZ(pos, token_data, [], varnm)
+    VAR_IN_TEXT(pos, token_data, [], varnm)
   )
-  | '#', Star (constructor, '.'), (identifier | constructor) -> (
+  | '#', Star (upper, '.'), (lower | upper) -> (
     let csnmpure = lexeme lexbuf in
     let csstr = String.sub csnmpure 1 ((String.length csnmpure) - 1) in
     let (mdlnmlst, csnm) = split_module_list csstr in
@@ -905,27 +901,27 @@ and horzexpr line_break_counter comment_stack lexbuf =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
     mode_push ActiveState;
-    VARINHORZ(pos, token_data, mdlnmlst, csnm)
+    VAR_IN_TEXT(pos, token_data, mdlnmlst, csnm)
   )
-  | '\\', (identifier | constructor), '@' -> (
+  | '\\', (lower | upper), '@' -> (
     let tokstr = lexeme lexbuf in
     let pos = get_pos lexbuf in
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
     mode_push ActiveState;
-    HORZMACRO(pos, token_data, tokstr)
+    BACKSLASH_MACRO(pos, token_data, tokstr)
   )
-  | '\\', (identifier | constructor) -> (
+  | '\\', (lower | upper) -> (
     let tokstr = lexeme lexbuf in
     let pos = get_pos lexbuf in
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
     mode_push ActiveState;
-    HORZCMD(pos, token_data, tokstr)
+   BACKSLASH_CMD(pos, token_data, tokstr)
   )
-  | '\\', Star (constructor, '.'), (identifier | constructor) -> (
+  | '\\', Star (upper, '.'), (lower | upper) -> (
     let tokstrpure = lexeme lexbuf in
     let tokstr = String.sub tokstrpure 1 ((String.length tokstrpure) - 1) in
     let (mdlnmlst, csnm) = split_module_list tokstr in
@@ -934,15 +930,23 @@ and horzexpr line_break_counter comment_stack lexbuf =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
     mode_push ActiveState;
-    HORZCMDWITHMOD(pos, token_data, mdlnmlst, "\\" ^ csnm)
+    LONG_BACKSLASH_CMD(pos, token_data, mdlnmlst, csnm)
   )
   | '\\', symbol -> (
     let tokstr = String.sub (lexeme lexbuf) 1 1 in
     let pos = get_pos lexbuf in
     let token_data =
-      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
+      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment_horz lexbuf)
     in
     CHAR(pos, token_data, tokstr)
+  )
+  | "${", Star (break | space),"|" -> (
+    mode_push MathState;
+    let pos = get_pos_last lexbuf in
+    let token_data =
+      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
+    in
+    L_MATH_TEXT_LIST(pos, token_data)
   )
   | "${" -> (
     mode_push MathState;
@@ -950,7 +954,7 @@ and horzexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    BMATHGRP(pos, token_data)
+    L_MATH_TEXT(pos, token_data)
   )
   | Plus '`' -> (
     let pos_start = get_pos lexbuf in
@@ -959,9 +963,9 @@ and horzexpr line_break_counter comment_stack lexbuf =
     let (pos_last, s, omit_post) = literal quote_length buffer lexbuf in
     let pos = Range.unite pos_start pos_last in
     let token_data =
-      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
+      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment_horz lexbuf)
     in
-    LITERAL(pos, token_data, s, true, omit_post)
+    STRING(pos, token_data, s, true, omit_post)
   )
   | '#', Plus '`' -> (
     let pos_start = get_pos lexbuf in
@@ -970,16 +974,17 @@ and horzexpr line_break_counter comment_stack lexbuf =
     let (pos_last, s, omit_post) = literal quote_length buffer lexbuf in
     let pos = Range.unite pos_start pos_last in
     let token_data =
-      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
+      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment_horz lexbuf)
     in
-    LITERAL(pos, token_data, s, false, omit_post)
+    STRING(pos, token_data, s, false, omit_post)
   )
   | eof -> (
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) None
     in
     if (List.length !mode_stack_ref) = 1 then
-      EOI(token_data)
+      let pos = get_pos lexbuf in
+      EOI(pos, token_data)
     else
       report_error lexbuf "unexpected end of input while reading an inline text area"
   )
@@ -1008,19 +1013,20 @@ and mathexpr line_break_counter comment_stack lexbuf =
     let (comment_str, lexbuf) = comment buffer lexbuf in
     mathexpr 0 ((line_break_counter, comment_str)::comment_stack) lexbuf
   )
-  | "?:" -> (
+  | "?" -> (
     let pos = get_pos lexbuf in
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    OPTIONAL(pos, token_data)
+    QUESTION(pos, token_data)
   )
-  | "?*" -> (
+  | "!{", Star (break | space),"|" -> (
     let pos = get_pos lexbuf in
+    mode_push HorizontalState;
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    OMISSION(pos, token_data)
+    L_INLINE_TEXT_LIST(pos, token_data)
   )
   | "!{" -> (
     let pos = get_pos lexbuf in
@@ -1028,7 +1034,7 @@ and mathexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    BHORZGRP(pos, token_data)
+    L_INLINE_TEXT(pos, token_data)
   )
   | "!<" -> (
     let pos = get_pos lexbuf in
@@ -1036,7 +1042,7 @@ and mathexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    BVERTGRP(pos, token_data)
+    L_BLOCK_TEXT(pos, token_data)
   )
   | "!(|" -> (
     let pos = get_pos lexbuf in
@@ -1044,7 +1050,7 @@ and mathexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    BRECORD(pos, token_data)
+    L_RECORD(pos, token_data)
   )
   | "!(" -> (
     let pos = get_pos lexbuf in
@@ -1052,7 +1058,7 @@ and mathexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    LPAREN(pos, token_data)
+    L_PAREN(pos, token_data)
   )
   | "![" -> (
     let pos = get_pos lexbuf in
@@ -1060,7 +1066,15 @@ and mathexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    BLIST(pos, token_data)
+    L_SQUARE(pos, token_data)
+  )
+  | "{", Star (break | space),"|" -> (
+    let pos = get_pos lexbuf in
+    mode_push MathState;
+    let token_data =
+      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
+    in
+    L_MATH_TEXT_LIST(pos, token_data)
   )
   | '{' -> (
     let pos = get_pos lexbuf in
@@ -1068,7 +1082,15 @@ and mathexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    BMATHGRP(pos, token_data)
+    L_MATH_TEXT(pos, token_data)
+  )
+  | "|", Star (break | space),"}" -> (
+    let pos = get_pos lexbuf in
+    mode_pop lexbuf "too many closing";
+    let token_data =
+      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
+    in
+    R_MATH_TEXT_LIST(pos, token_data)
   )
   | '}' -> (
     let pos = get_pos lexbuf in
@@ -1076,14 +1098,14 @@ and mathexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    EMATHGRP(pos, token_data)
+    R_MATH_TEXT(pos, token_data)
   )
   | '|' -> (
     let pos = get_pos lexbuf in
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    SEP(pos, token_data)
+    BAR(pos, token_data)
   )
   | '^' -> (
     let pos = get_pos lexbuf in
@@ -1123,16 +1145,16 @@ and mathexpr line_break_counter comment_stack lexbuf =
     in
     MATHCHARS(pos, token_data, str)
   )
-  | '#', identifier -> (
+  | '#', lower -> (
     let tokstr = lexeme lexbuf in
     let varnm = String.sub tokstr 1 ((String.length tokstr) - 1) in
     let pos = get_pos lexbuf in
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    VARINMATH(pos, token_data, [], varnm)
+    VAR_IN_TEXT(pos, token_data, [], varnm)
   )
-  | '#', Star (constructor, '.'), (identifier | constructor) -> (
+  | '#', Star (upper, '.'), (lower | upper) -> (
     let csnmpure = lexeme lexbuf in
     let csstr = String.sub csnmpure 1 ((String.length csnmpure) - 1) in
     let (mdlnmlst, csnm) = split_module_list csstr in
@@ -1140,17 +1162,17 @@ and mathexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    VARINMATH(pos, token_data, mdlnmlst, csnm)
+    VAR_IN_TEXT(pos, token_data, mdlnmlst, csnm)
   )
-  | '\\', (identifier | constructor) -> (
+  | '\\', (lower | upper) -> (
     let tokstr = lexeme lexbuf in
     let pos = get_pos lexbuf in
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    MATHCMD(pos, token_data, tokstr)
+    BACKSLASH_CMD(pos, token_data, tokstr)
   )
-  | '\\', Star (constructor, '.'), (identifier | constructor) -> (
+  | '\\', Star (upper, '.'), (lower | upper) -> (
     let tokstrpure = lexeme lexbuf in
     let tokstr = String.sub tokstrpure 1 ((String.length tokstrpure) - 1) in
     let (mdlnmlst, csnm) = split_module_list tokstr in
@@ -1158,7 +1180,7 @@ and mathexpr line_break_counter comment_stack lexbuf =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    MATHCMDWITHMOD(pos, token_data, mdlnmlst, "\\" ^ csnm)
+    LONG_BACKSLASH_CMD(pos, token_data, mdlnmlst, csnm)
   )
   | '\\', symbol -> (
     let tok = String.sub (lexeme lexbuf) 1 1 in
@@ -1193,20 +1215,6 @@ and active line_break_counter comment_stack lexbuf  =
   )
   | space -> active line_break_counter comment_stack lexbuf
   | break -> active (line_break_counter + 1) comment_stack lexbuf
-  | "?:" -> (
-    let pos = get_pos lexbuf in
-    let token_data =
-      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
-    in
-    OPTIONAL(pos, token_data)
-  )
-  | "?*" -> (
-    let pos = get_pos lexbuf in
-    let token_data =
-      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
-    in
-    OMISSION(pos, token_data)
-  )
   | '~' -> (
     let pos = get_pos lexbuf in
     let token_data =
@@ -1214,13 +1222,20 @@ and active line_break_counter comment_stack lexbuf  =
     in
     EXACT_TILDE(pos, token_data)
   )
+  | '?' -> (
+    let pos = get_pos lexbuf in
+    let token_data =
+      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
+    in
+    QUESTION(pos, token_data)
+  )
   | "(|" -> (
     let pos = get_pos lexbuf in
     mode_push ProgramState;
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    BRECORD(pos, token_data)
+    L_RECORD(pos, token_data)
   )
   | '(' -> (
     let pos = get_pos lexbuf in
@@ -1228,7 +1243,7 @@ and active line_break_counter comment_stack lexbuf  =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    LPAREN(pos, token_data)
+    L_PAREN(pos, token_data)
   )
   | '[' -> (
     let pos = get_pos lexbuf in
@@ -1236,7 +1251,16 @@ and active line_break_counter comment_stack lexbuf  =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    BLIST(pos, token_data)
+    L_SQUARE(pos, token_data)
+  )
+  | "{", Star (break | space),"|" -> (
+    let pos = get_pos lexbuf in
+    mode_pop lexbuf "BUG; this cannot happen";
+    mode_push HorizontalState;
+    let token_data =
+      Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
+    in
+    L_INLINE_TEXT_LIST(pos, token_data)
   )
   | '{' -> (
     let pos = get_pos lexbuf in
@@ -1245,7 +1269,7 @@ and active line_break_counter comment_stack lexbuf  =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    BHORZGRP(pos, token_data)
+    L_INLINE_TEXT(pos, token_data)
   )
   | '<' -> (
     let pos = get_pos lexbuf in
@@ -1254,7 +1278,7 @@ and active line_break_counter comment_stack lexbuf  =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    BVERTGRP(pos, token_data)
+    L_BLOCK_TEXT(pos, token_data)
   )
   | ';' -> (
     let pos = get_pos lexbuf in
@@ -1262,7 +1286,7 @@ and active line_break_counter comment_stack lexbuf  =
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)
     in
-    ENDACTIVE(pos, token_data)
+    SEMICOLON(pos, token_data)
   )
   | eof -> (
       report_error lexbuf "unexpected end of input while reading an active area"
@@ -1278,7 +1302,7 @@ and active line_break_counter comment_stack lexbuf  =
 
   and lex_header lexbuf =
   match%sedlex lexbuf with
-  | identifier -> (
+  | lower -> (
     let headertype = lexeme lexbuf in
     let _ = lex_header_sub lexbuf in
     let buffer = Buffer.create 256 in
@@ -1401,12 +1425,23 @@ and after_comment lexbuf =
   | _ -> None
 
 
+and after_comment_horz lexbuf =
+  match%sedlex lexbuf with
+  | space -> Sedlexing.rollback lexbuf; None
+  | '%' -> (
+    let buffer = Buffer.create 256 in
+    let (comment_str, lexbuf) = comment buffer lexbuf in
+    Some(comment_str)
+  )
+  | _ -> None
+
+
 
 
 let lex lexbuf =
   match top_mode () with
   | ProgramState -> progexpr 0 [] lexbuf
-  | VerticalState -> vertexpr 0 [] lexbuf
-  | HorizontalState -> horzexpr 0 [] lexbuf
+  | VerticalState -> lex_block 0 [] lexbuf
+  | HorizontalState -> lex_inline 0 [] lexbuf
   | ActiveState -> active 0 [] lexbuf
   | MathState -> mathexpr 0 [] lexbuf

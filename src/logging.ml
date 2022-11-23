@@ -1,5 +1,61 @@
+type abs_path = AbsPath of string
 
-open MyUtil
+type lib_path = LibPath of string
+
+let open_in_abs (AbsPath(pathstr)) =
+  open_in pathstr
+
+
+let open_in_bin_abs (AbsPath(pathstr)) =
+  open_in_bin pathstr
+
+
+let open_out_abs (AbsPath(pathstr)) =
+  open_out pathstr
+
+
+let dirname_abs (AbsPath(pathstr)) =
+  Filename.dirname pathstr
+
+
+let basename_abs (AbsPath(pathstr)) =
+  Filename.basename pathstr
+
+
+let string_of_file (abspath : abs_path) : (string, string) result =
+  try
+    let ic = open_in_bin_abs abspath in
+    let bufsize = 65536 in
+    let stepsize = 65536 in
+    let buf = Buffer.create bufsize in
+    let bytes = Bytes.create stepsize in
+    let flag = ref true in
+    try
+      while !flag do
+        let c = input ic bytes 0 bufsize in
+        if c = 0 then
+          flag := false
+        else
+          Buffer.add_subbytes buf bytes 0 c
+      done;
+      close_in ic;
+      let s = Buffer.contents buf in
+      Ok(s)
+    with
+    | Failure(_) -> close_in ic; assert false
+  with
+  | Sys_error(msg) -> Error(msg)
+
+
+let make_abs_path pathstr = AbsPath(pathstr)
+
+let make_lib_path pathstr = LibPath(pathstr)
+
+let get_abs_path_string (AbsPath(pathstr)) = pathstr
+
+let get_lib_path_string (LibPath(pathstr)) = pathstr
+
+let get_abs_path_extension (AbsPath(pathstr)) = Filename.extension pathstr
 
 
 let show_path abspath =
