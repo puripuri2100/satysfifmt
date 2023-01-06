@@ -1,4 +1,6 @@
-open Base
+open Types
+
+let is_string_empty str = String.equal str ""
 
 let stack_to_lst stack = Stack.fold (fun lst value -> value::lst) [] stack
 let append_to_stack stack lst =
@@ -21,7 +23,7 @@ let before_comments_format (ctx:context) (comments:string list) : string list op
 
 
 
-let rec code_format (ctx:context) (rule_with_comment:rule_with_comment) : (string list * bool) =
+let rec code_format_sub (ctx:context) (rule_with_comment:rule_with_comment) : (string list * bool) =
   match rule_with_comment.rule with
   | AST(ast) -> (
     let v = Stack.create () in
@@ -30,7 +32,7 @@ let rec code_format (ctx:context) (rule_with_comment:rule_with_comment) : (strin
       | Some(lst) -> append_to_stack v lst
       | None -> ()
     in
-    let (rule_format_vec, _) = code_format ctx ast in
+    let (rule_format_vec, _) = code_format_sub ctx ast in
     let () = append_to_stack v rule_format_vec in
     match rule_with_comment.after_comment with
     | Some(after_comment) -> let () = v |> Stack.push after_comment in (stack_to_lst v, true)
@@ -60,7 +62,7 @@ let rec code_format (ctx:context) (rule_with_comment:rule_with_comment) : (strin
   )
   | Paren(open_str, child_rule_with_comment, close_str) -> (
     let (str_lst, is_exist_after_comment) =
-      code_format (ctx |> set_list_join_str(None)) child_rule_with_comment
+      code_format_sub (ctx |> set_list_join_str(None)) child_rule_with_comment
     in
     let v = Stack.create () in
     let () =
@@ -96,7 +98,7 @@ let rec code_format (ctx:context) (rule_with_comment:rule_with_comment) : (strin
         | code_str::xs -> let () = v |> Stack.push code_str in sub xs
       in
       let ctx = ctx |> increment_depth |> set_list_join_str None in
-      let (code_str_lst, _) = code_format ctx child_rule_with_comment in
+      let (code_str_lst, _) = code_format_sub ctx child_rule_with_comment in
       let () = sub code_str_lst in
       match rule_with_comment.after_comment with
       | Some(after_comment) -> (
@@ -128,7 +130,7 @@ and break_token_list
     | [] -> (false, buf, is_oneline_last_comment_exsits)
     | new_rule_with_comment::xs -> (
       let (code_str_lst, is_last_exists_after_comment) =
-        code_format (ctx |> set_list_join_str (Some(join))) new_rule_with_comment
+        code_format_sub (ctx |> set_list_join_str (Some(join))) new_rule_with_comment
       in
       if
         (* 要素の前のコメントが存在する要素が一つでもあるか、 *)
@@ -181,7 +183,7 @@ and break_token_list
       | [] -> ()
       | new_rule_with_comment::xs -> (
         let (code_lst, is_exsits_after_comment) =
-          code_format (ctx |> increment_depth |> set_list_join_str (Some(join))) new_rule_with_comment
+          code_format_sub (ctx |> increment_depth |> set_list_join_str (Some(join))) new_rule_with_comment
         in
         let is_last = List.length xs == 0 in (* 全体の最後 *)
         let rec sub2 lst =
@@ -232,7 +234,7 @@ and break_token_column
     match lst with
     | (rule_with_comment, config)::xs -> (
       let (str_lst, is_last_exists_after_comment) =
-        code_format (ctx |> set_list_join_str(None)) rule_with_comment
+        code_format_sub (ctx |> set_list_join_str(None)) rule_with_comment
       in
       is_last_exists_after_comment_global := is_last_exists_after_comment;
       if List.length str_lst > 1 then
@@ -363,3 +365,8 @@ and break_token_column
     in
     (stack_to_lst v, true)
   | None -> (stack_to_lst v, false)
+
+
+let code_format (ctx:context) (rule_with_comment:rule_with_comment) : string =
+  let (lst, _) = code_format_sub ctx rule_with_comment in
+  Types.lst_join ctx.break_str lst

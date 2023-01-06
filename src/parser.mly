@@ -134,7 +134,8 @@
 %type<(Types.rule_with_comment * Types.column_config) list> macroargs
 %type<Types.rule_with_comment> macronarg
 %type<Types.rule_with_comment list> cmd_arg_expr
-%type<Types.rule_with_comment> expr_opts expr_opt_entry
+%type<Types.rule_with_comment option> expr_opts
+%type<Types.rule_with_comment> expr_opt_entry
 %type<Types.rule_with_comment list> cmd_args_text
 %type<Types.rule_with_comment> cmd_arg_text
 %type<Types.rule_with_comment> backslash_cmd plus_cmd
@@ -355,8 +356,8 @@ bind:
   }
 ;
 bind_value: /* (rule_with_comment * column_config) list */
-  | val_tok=VAL; param_val=param_val; eq_tok=EXACT_EQ; rwc_expr=expr {
-    let lst = [(Types.with_comment (Raw "val") (second val_tok), column_config_default |> set_is_break false)] in
+  | param_val=param_val; eq_tok=EXACT_EQ; rwc_expr=expr {
+    let lst = [(Types.with_comment (Raw "val") (second eq_tok), column_config_default |> set_is_break false)] in
     let lst = List.append lst param_val in
     let lst = List.append lst [
       (Types.with_comment (Raw "=") (second eq_tok), column_config_default |> set_is_break false);
@@ -1102,7 +1103,7 @@ expr:
     let lst = List.concat let_exprs in
     Types.with_comment_none (Column (List.append lst [(rwc_expr, column_config_default)]))
   }
-  | match_tok=MATCH; rwc=expr; with_tok=WITH; branches=match_branches; separated_nonempty_list(BAR, branch); end_tok=END {
+  | match_tok=MATCH; rwc=expr; with_tok=WITH; branches=match_branches; end_tok=END {
     let lst =
       [
         (Types.with_comment (Raw "match") (second match_tok), column_config_default |> set_is_break false);
@@ -1275,20 +1276,36 @@ expr_op:
 expr_app:
   | rwc1=expr_app; mnopts=expr_opts; rwc2=expr_un
     {
-      Types.with_comment_none (Column [
-        (rwc1, column_config_default);
-        (mnopts, column_config_default);
-        (rwc2, column_config_default);
-      ])
+      let lst =
+        match mnopts with
+        | Some(mnopts) -> [
+          (rwc1, column_config_default);
+          (mnopts, column_config_default);
+          (rwc2, column_config_default);
+        ]
+        | None -> [
+          (rwc1, column_config_default);
+          (rwc2, column_config_default);
+        ]
+      in
+      Types.with_comment_none (Column lst)
     }
   | rwc1=expr_app; mnopts=expr_opts; ctor=UPPER
     {
       let (_,d,s) = ctor in
-      Types.with_comment_none (Column [
-        (rwc1, column_config_default);
-        (mnopts, column_config_default);
-        (Types.with_comment (Raw s) d, column_config_default);
-      ])
+      let lst =
+        match mnopts with
+        | Some(mnopts) -> [
+          (rwc1, column_config_default);
+          (mnopts, column_config_default);
+          (Types.with_comment (Raw s) d, column_config_default);
+        ]
+        | None -> [
+          (rwc1, column_config_default);
+          (Types.with_comment (Raw s) d, column_config_default);
+        ]
+      in
+      Types.with_comment_none (Column lst)
     }
   | rwc=expr_un { rwc }
 ;
@@ -1341,32 +1358,32 @@ expr_bot:
         Types.with_comment (Raw s) d
       }
   | long_ident=LONG_LOWER
-       {
+      {
         let (_,d,ms,s) = long_ident in
         let s = (Types.lst_join "." ms) ^ "." ^ s in
         Types.with_comment (Raw s) d
       }
   | ic=INT
-       {
+      {
         let (_,d,i) = ic in
         Types.with_comment (Raw (string_of_int i)) d
       }
   | fc=FLOAT
-       {
+      {
         let (_,d,f) = fc in
         Types.with_comment (Raw (string_of_float f)) d
       }
   | lc=LENGTH
-       {
+      {
         let (_,d,fc,unitnm) = lc in
         Types.with_comment (Raw (string_of_float fc ^ unitnm)) d
       }
   | tok=TRUE
-       {
+      {
         Types.with_comment (Raw "true") (second tok)
       }
   | tok=FALSE
-       {
+      {
         Types.with_comment (Raw "false") (second tok)
       }
   | tok=STRING
@@ -1741,7 +1758,7 @@ math:
 ;
 math_lst:
   | rwc=math_single { [rwc] }
-  | rwc=inline_single BAR; aux=math_lst { rwc::aux }
+  | rwc=math_single BAR; aux=math_lst { rwc::aux }
 ;
 math_single:
   | math_elmes=list(math_elem) {
@@ -1847,10 +1864,8 @@ math_elem:
   }
 ;
 math_group:
-  | opn_tok=L_MATH_TEXT; math_elems=list(math_elem); cls_tok=R_MATH_TEXT {
-    let c = column_config_default in
-    let rwc = Types.with_comment_none (Column (List.map (fun r -> (r, c)) math_elems)) in
-    Types.with_comment_paren (second opn_tok) (Paren ("{", rwc, "}")) (second cls_tok)
+  | opn_tok=L_MATH_TEXT; ms=math_single; cls_tok=R_MATH_TEXT {
+    Types.with_comment_paren (second opn_tok) (Paren ("{", ms, "}")) (second cls_tok)
   }
   | bot=math_bot { bot }
 ;
@@ -1866,7 +1881,7 @@ math_bot:
   }
 ;
 math_cmd_arg:
-  | mn_opt=option(expr_opts); opn_tok=L_MATH_TEXT; rwc=math; cls_tok=R_MATH_TEXT {
+  | mn_opt=expr_opts; opn_tok=L_MATH_TEXT; rwc=math; cls_tok=R_MATH_TEXT {
     let rwc =
       Types.with_comment_paren
         (second opn_tok)
@@ -1877,7 +1892,7 @@ math_cmd_arg:
     | Some(mn) -> [mn; rwc]
     | None -> [rwc]
   }
-  | mn_opt=option(expr_opts); opn_tok=L_MATH_TEXT_LIST; lst=math_lst; cls_tok=R_MATH_TEXT_LIST {
+  | mn_opt=expr_opts; opn_tok=L_MATH_TEXT_LIST; lst=math_lst; cls_tok=R_MATH_TEXT_LIST {
     let rwc =
       Types.with_comment_paren
         (second opn_tok)
@@ -1888,7 +1903,7 @@ math_cmd_arg:
     | Some(mn) -> [mn; rwc]
     | None -> [rwc]
   }
-  | mn_opt=option(expr_opts); opn_tok=L_INLINE_TEXT; rwc=inline; cls_tok=R_INLINE_TEXT {
+  | mn_opt=expr_opts; opn_tok=L_INLINE_TEXT; rwc=inline; cls_tok=R_INLINE_TEXT {
     let rwc =
       Types.with_comment_paren
         (second opn_tok)
@@ -1899,7 +1914,7 @@ math_cmd_arg:
     | Some(mn) -> [mn; rwc]
     | None -> [rwc]
   }
-  | mn_opt=option(expr_opts); opn_tok=L_INLINE_TEXT_LIST; lst=inline_lst; cls_tok=R_INLINE_TEXT_LIST {
+  | mn_opt=expr_opts; opn_tok=L_INLINE_TEXT_LIST; lst=inline_lst; cls_tok=R_INLINE_TEXT_LIST {
     let rwc =
       Types.with_comment_paren
         (second opn_tok)
@@ -1910,7 +1925,7 @@ math_cmd_arg:
     | Some(mn) -> [mn; rwc]
     | None -> [rwc]
   }
-  | mn_opt=option(expr_opts); opn_tok=L_BLOCK_TEXT; rwc=block; cls_tok=R_BLOCK_TEXT {
+  | mn_opt=expr_opts; opn_tok=L_BLOCK_TEXT; rwc=block; cls_tok=R_BLOCK_TEXT {
     let rwc =
       Types.with_comment_paren
         (second opn_tok)
@@ -1921,56 +1936,7 @@ math_cmd_arg:
     | Some(mn) -> [mn; rwc]
     | None -> [rwc]
   }
-  | mn_opt=option(expr_opts); opn_tok=L_PAREN; rwc=expr; cls_tok=R_PAREN {
-    let rwc =
-      Types.with_comment_paren
-        (second opn_tok)
-        (Paren ("!(", rwc, ")"))
-        (second cls_tok)
-    in
-    match mn_opt with
-    | Some(mn) -> [mn; rwc]
-    | None -> [rwc]
-  }
-  | mn_opt=option(expr_opts); opn_tok=L_PAREN; cls_tok=R_PAREN {
-    let rwc =
-      Types.with_comment_paren
-        (second opn_tok)
-        (Paren ("!(", Types.with_comment_none Null, ")"))
-        (second cls_tok)
-    in
-    match mn_opt with
-    | Some(mn) -> [mn; rwc]
-    | None -> [rwc]
-  }
-  | mn_opt=option(expr_opts); rwc=expr_bot_record {
-    let rwc =
-      match rwc.rule with
-      | Paren (opn_str, c, cls_str) -> {
-        before_comments = rwc.before_comments;
-        rule = Paren ("!"^opn_str, c, cls_str);
-        after_comment = rwc.after_comment;
-      }
-      | _ -> assert false
-    in
-    match mn_opt with
-    | Some(mn) -> [mn; rwc]
-    | None -> [rwc]
-  }
-  | mn_opt=option(expr_opts); rwc=expr_bot_list {
-    let rwc =
-      match rwc.rule with
-      | Paren (opn_str, c, cls_str) -> {
-        before_comments = rwc.before_comments;
-        rule = Paren ("!"^opn_str, c, cls_str);
-        after_comment = rwc.after_comment;
-      }
-      | _ -> assert false
-    in
-    match mn_opt with
-    | Some(mn) -> [mn; rwc]
-    | None -> [rwc]
-  }
+  | cmdarg=cmd_arg_expr { cmdarg }
 ;
 
 macroargs:
@@ -1992,7 +1958,7 @@ macronarg:
   }
 ;
 cmd_arg_expr:
-  | mn_opt=option(expr_opts); opn_tok=L_PAREN; rwc=expr; cls_tok=R_PAREN {
+  | mn_opt=expr_opts; opn_tok=L_PAREN; rwc=expr; cls_tok=R_PAREN {
     let rwc =
       Types.with_comment_paren
         (second opn_tok)
@@ -2003,7 +1969,7 @@ cmd_arg_expr:
     | Some(mn) -> [mn; rwc]
     | None -> [rwc]
   }
-  | mn_opt=option(expr_opts); opn_tok=L_PAREN; cls_tok=R_PAREN {
+  | mn_opt=expr_opts; opn_tok=L_PAREN; cls_tok=R_PAREN {
     let rwc =
       Types.with_comment_paren
         (second opn_tok)
@@ -2014,12 +1980,12 @@ cmd_arg_expr:
     | Some(mn) -> [mn; rwc]
     | None -> [rwc]
   }
-  | mn_opt=option(expr_opts); rwc=expr_bot_record {
+  | mn_opt=expr_opts; rwc=expr_bot_record {
     match mn_opt with
     | Some(mn) -> [mn; rwc]
     | None -> [rwc]
   }
-  | mn_opt=option(expr_opts); rwc=expr_bot_list {
+  | mn_opt=expr_opts; rwc=expr_bot_list {
     match mn_opt with
     | Some(mn) -> [mn; rwc]
     | None -> [rwc]
@@ -2027,8 +1993,12 @@ cmd_arg_expr:
 ;
 expr_opts:
   | q_tok=QUESTION; L_PAREN; mnopts=optterm_nonempty_list(COMMA, expr_opt_entry); cls_tok=R_PAREN {
-    Types.with_comment_paren (second q_tok) (Paren ("?(", Types.with_comment_none (List (",", mnopts)), ")")) (second cls_tok)
+    let rwc =
+      Types.with_comment_paren (second q_tok) (Paren ("?(", Types.with_comment_none (List (",", mnopts)), ")")) (second cls_tok)
+    in
+    Some(rwc)
   }
+  | { None }
 ;
 expr_opt_entry:
   | rlabel=LOWER; eq_tok=EXACT_EQ; rwc=expr {
@@ -2061,16 +2031,16 @@ cmd_arg_text:
 backslash_cmd:
   | cs=BACKSLASH_CMD { let (_, d, csnm) = cs in Types.with_comment (Raw ("\\" ^ csnm)) d }
   | long_cs=LONG_BACKSLASH_CMD {
-     let (_, d, ms, csnm) = long_cs in
-     let s = "\\" ^ (Types.lst_join "." ms) ^ "." ^ csnm in
-     Types.with_comment (Raw s) d
+    let (_, d, ms, csnm) = long_cs in
+    let s = "\\" ^ (Types.lst_join "." ms) ^ "." ^ csnm in
+    Types.with_comment (Raw s) d
   }
 ;
 plus_cmd:
   | cs=PLUS_CMD { let (_, d, csnm) = cs in Types.with_comment (Raw ("+" ^ csnm)) d }
   | long_cs=LONG_PLUS_CMD {
-     let (_, d, ms, csnm) = long_cs in
-     let s = "+" ^ (Types.lst_join "." ms) ^ "." ^ csnm in
-     Types.with_comment (Raw s) d 
+    let (_, d, ms, csnm) = long_cs in
+    let s = "+" ^ (Types.lst_join "." ms) ^ "." ^ csnm in
+    Types.with_comment (Raw s) d 
   }
 ;

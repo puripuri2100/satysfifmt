@@ -261,7 +261,7 @@ let rec progexpr line_break_counter comment_stack lexbuf =
     mode_push VerticalState;
     L_BLOCK_TEXT(pos, token_data)
   )
-  | "{", Star (break | space),"|" -> (
+  | "${", Star (break | space),"|" -> (
     let pos = get_pos lexbuf in
     let token_data =
       Types.make_token_data line_break_counter (List.rev comment_stack) (after_comment lexbuf)

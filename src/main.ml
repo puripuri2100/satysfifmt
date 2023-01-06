@@ -91,9 +91,25 @@ let main =
       Sedlexing.Utf8.from_channel file_channel
     in
     let () = Sedlexing.set_filename lexbuf input_file_name in
+    let ctx = {
+        depth = 2;
+        tab_spaces = 2;
+        line_width = 60;
+        break_str = "\n";
+        list_join_str = None;
+        oneline_comment_format = (fun s -> "% " ^ s);
+        block_comment_format = (fun _ lst -> List.map (fun s -> "% " ^ s) lst);
+      }
+    in
     let (head_rwc_lst, body_rwc) = parse lexbuf in
-    (*let () = Printf.printf "%s\n" (Types.show_rule body_rwc.rule) in*)
     let _ = close_in file_channel in
+    let head_str_lst = List.map (Code_format.code_format ctx) head_rwc_lst in
+    let body_str = Code_format.code_format ctx body_rwc in
+    let head_code = Types.lst_join ctx.break_str head_str_lst in
+    let code = head_code ^ ctx.break_str ^ ctx.break_str ^ body_str in
+    let output_channel = open_out output_file_name in
+    let () = output_string output_channel code in
+    let _ = close_out output_channel in
     ()
   )
 
