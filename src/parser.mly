@@ -192,22 +192,18 @@ main_lib:
           | None -> lst
         in
         let lst = List.append lst [
-            (Types.with_comment (Raw "=") (second exact_eq_tok), column_config_default |> set_is_break false);
-            (Types.with_comment (Raw "struct") (second struct_tok), column_config_default |> set_is_break true);
+            Types.with_comment (Raw "=") (second exact_eq_tok), column_config_default |> set_is_break false;
+            Types.with_comment (Raw "struct") (second struct_tok), column_config_default |> set_is_break true;
+            Types.with_comment_none (AST (Types.with_comment_none (Column (List.map (fun rwc -> (rwc, column_config_default |> set_is_break true)) (List.concat binds))))), column_config_default |> set_is_break true;
+            Types.with_comment (Raw "end") (second end_tok), column_config_default;
           ]
         in
-        let lst = List.append lst [
-          (Types.with_comment_none (Column (List.map (fun rwc -> (rwc, column_config_default |> set_is_break true)) (List.concat binds))), column_config_default)
-        ] in
-        let lst = List.append lst [
-          (Types.with_comment (Raw "end") (second end_tok), column_config_default)
-        ] in
         Types.with_comment_none (Column lst)
       }
 ;
 headerelem:
-  | content=HEADER_REQUIRE { let (_, d, s) = content in Types.with_comment (Raw ("@require" ^ s)) d }
-  | content=HEADER_IMPORT  { let (_, d, s) = content in Types.with_comment (Raw ("@import" ^ s)) d }
+  | content=HEADER_REQUIRE { let (_, d, s) = content in Types.with_comment (Raw ("@require: " ^ s)) d }
+  | content=HEADER_IMPORT  { let (_, d, s) = content in Types.with_comment (Raw ("@import: " ^ s)) d }
 ;
 modexpr:
   | fun_tok=FUN; opn_tok=L_PAREN; modident=UPPER; colon_tok=COLON; rwc_sig=sigexpr; cls_tok=R_PAREN; arrow_tok=ARROW; rwc_mod=modexpr {
@@ -357,13 +353,10 @@ bind:
 ;
 bind_value: /* (rule_with_comment * column_config) list */
   | param_val=param_val; eq_tok=EXACT_EQ; rwc_expr=expr {
-    let lst = [(Types.with_comment (Raw "val") (second eq_tok), column_config_default |> set_is_break false)] in
-    let lst = List.append lst param_val in
-    let lst = List.append lst [
+    List.append param_val [
       (Types.with_comment (Raw "=") (second eq_tok), column_config_default |> set_is_break false);
       (rwc_expr, column_config_default);
-    ] in
-    lst
+    ]
   }
   | tilde_tok=EXACT_TILDE; param_val=param_val; eq_tok=EXACT_EQ; rwc_expr=expr {
     let lst = [
@@ -553,7 +546,7 @@ param_type: /* (rule_with_comment * column_config) list */
   | tyident=LOWER; tyvars=list(TYPEVAR) {
     let (_, ty_d, ty_s) = tyident in
     let lst = List.map (fun (_, tyvar_d, tyvar_s) ->
-      (Types.with_comment (Raw tyvar_s) tyvar_d, column_config_default |> set_is_break false)
+      (Types.with_comment (Raw ("'" ^ tyvar_s)) tyvar_d, column_config_default |> set_is_break false)
     ) tyvars in
     (Types.with_comment (Raw ty_s) ty_d, column_config_default |> set_is_break false) :: lst
   }
@@ -645,11 +638,15 @@ sigexpr_bot:
     }
   | sig_tok=SIG; decls=list(decl); end_tok=END
     {
-      let lst =
-        (Types.with_comment (Raw "sig") (second sig_tok), column_config_default)
-        :: (List.map (fun r -> (r, column_config_default)) decls)
+      let decls =
+        Types.with_comment_none (Column (List.map (fun r -> (r, column_config_default |> set_is_break true)) decls))
       in
-      let lst = List.append lst [(Types.with_comment (Raw "end") (second end_tok), column_config_default)] in
+      let lst = [
+          Types.with_comment (Raw "sig") (second sig_tok), column_config_default;
+          Types.with_comment_none (AST decls), column_config_default |> set_is_break true;
+          Types.with_comment (Raw "end") (second end_tok), column_config_default
+        ]
+      in
       Types.with_comment_none (Column lst)
     }
 ;
@@ -793,7 +790,7 @@ quant:
       { List.map (fun rwc -> (rwc, column_config_default)) (List.append tyquants rowquants) }
 ;
 tyquant:
-  | tyvar=TYPEVAR { let (_,d,s) = tyvar in Types.with_comment (Raw s) d }
+  | tyvar=TYPEVAR { let (_,d,s) = tyvar in Types.with_comment (Raw ("'" ^ s)) d }
 ;
 rowquant:
   | opn_tok=L_PAREN; rowvar=ROWVAR; cons_tok=CONS; mnrbkd=kind_row; cls_tok=R_PAREN  {
@@ -1107,8 +1104,8 @@ expr:
     let lst =
       [
         (Types.with_comment (Raw "match") (second match_tok), column_config_default |> set_is_break false);
-        (rwc, column_config_default |> set_is_break false);
-        (Types.with_comment (Raw "with") (second with_tok), column_config_default |> set_is_break false);
+        (rwc, column_config_default |> set_is_break false |> set_space_size 1);
+        (Types.with_comment (Raw "with") (second with_tok), column_config_default |> set_is_break true);
       ]
     in
     let lst = List.append lst branches in
@@ -1321,14 +1318,14 @@ expr_un:
   | tok=EXACT_AMP; rwc2=expr_bot
     {
       Types.with_comment_none (Column [
-        (Types.with_comment (Raw "&") (second tok), column_config_default);
+        (Types.with_comment (Raw "&") (second tok), column_config_default |> set_is_break false |> set_space_size 0);
         (rwc2, column_config_default);
       ])
     }
   | tok=EXACT_TILDE; rwc2=expr_bot
     {
       Types.with_comment_none (Column [
-        (Types.with_comment (Raw "~") (second tok), column_config_default);
+        (Types.with_comment (Raw "~") (second tok), column_config_default |> set_is_break false |> set_space_size 0);
         (rwc2, column_config_default);
       ])
     }

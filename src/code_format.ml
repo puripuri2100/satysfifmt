@@ -27,6 +27,8 @@ let rec code_format_sub (ctx:context) (rule_with_comment:rule_with_comment) : (s
   match rule_with_comment.rule with
   | AST(ast) -> (
     let v = Stack.create () in
+    let ctx = ctx |> increment_depth |> set_list_join_str None in
+    let tab = indent ctx in
     let () =
       match before_comments_format ctx rule_with_comment.before_comments with
       | Some(lst) -> append_to_stack v lst
@@ -35,8 +37,10 @@ let rec code_format_sub (ctx:context) (rule_with_comment:rule_with_comment) : (s
     let (rule_format_vec, _) = code_format_sub ctx ast in
     let () = append_to_stack v rule_format_vec in
     match rule_with_comment.after_comment with
-    | Some(after_comment) -> let () = v |> Stack.push after_comment in (stack_to_lst v, true)
-    | None -> (stack_to_lst v, false)
+    | Some(after_comment) ->
+        let () = v |> Stack.push after_comment in
+        (List.map (fun s -> tab ^ s) (stack_to_lst v), true)
+    | None -> (List.map (fun s -> tab ^ s) (stack_to_lst v), false)
   )
   | Raw(str) -> (
     let v = Stack.create () in
